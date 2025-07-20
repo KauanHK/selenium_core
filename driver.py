@@ -7,12 +7,117 @@ from selenium.webdriver.common.action_chains import ActionChains
 from selenium.webdriver.support.ui import Select
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException
-from handlers import ErrorsHandling, error_handling
 from datetime import datetime
 import logging
 import os
-from typing import Callable, Self, Literal, Any, TypeIs
+from functools import wraps
+from typing import Callable, Self, Literal, Any, TypeIs, TypeVar, overload, ParamSpec
+
+
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+
+P = ParamSpec('P')
+T = TypeVar('T')
+
+@overload
+def error_handling(
+    *,
+    on_error: dict[type[Exception], Callable] | None = None,
+    screenshot: bool = True,
+    log_level: int | None = logging.INFO
+) -> Callable[[Callable[P, T]], Callable[P, T]]:
+    ...
+
+
+@overload
+def error_handling(func: Callable[P, T]) -> Callable[P, T]:
+    ...
+
+
+def error_handling(
+    func: Callable[P, T] | None = None,
+    *,
+    on_error: dict[type[Exception], Callable] | None = None,
+    screenshot: bool = True,
+    log_level: int | None = logging.INFO
+) -> Callable[[Callable[P, T]], Callable[P, T]] | Callable[P, T]:
     
+    def decorator(f: Callable[P, T]) -> Callable[P, T]:
+
+        @wraps(f)
+        def wrapper(*args: P.args, **kwargs: P.kwargs) -> T:
+
+            driver = args[0] if args else None
+            if driver is None or not isinstance(driver, Driver):
+                raise TypeError("O primeiro argumento deve ser uma instância de 'Driver'.")
+
+            if driver.is_executing():
+                return f(*args, **kwargs)
+
+            with driver.execution_context(
+                func = f,
+                on_error = on_error,
+                screenshot = screenshot,
+                log_level = log_level
+            ):
+                return f(*args, **kwargs)
+            
+        return wrapper
+    
+    if func is None:
+        return decorator
+    return decorator(func)
+
+
+class ExecutionContext:
+
+    def __init__(
+        self,
+        driver: 'Driver',
+        func: Callable,
+        on_error: dict[type[Exception], Callable] | None = None,
+        screenshot: bool = True,
+        log_level: int | None = logging.INFO
+    ) -> None:
+        
+        self.driver = driver
+        self.func = func
+        self.on_error = on_error
+        self.screenshot = screenshot
+        self.log_level = log_level
+    
+    def __enter__(self) -> Self:
+        self.driver.start_execution()
+        return self
+    
+    def __exit__(self, exc_type, exc_value, traceback) -> bool:
+
+        self.driver.stop_execution()
+
+        if exc_value is None:
+            return True
+        
+        if self.on_error is None:
+            if self.screenshot:
+                self.driver.save_screenshot()
+            return False
+
+        error_handler = self.on_error.get(exc_type)
+        if error_handler is not None:
+            with self.driver.execution_context(
+                func = error_handler,
+                on_error = None,
+                screenshot = self.screenshot,
+                log_level = self.log_level
+            ):
+                error_handler(self.driver, exc_value)
+                return True
+        
+        return False
+
+
+T_EC = TypeVar('T_EC')
+
 
 class Driver:
 
@@ -29,8 +134,8 @@ class Driver:
         self.keep_alive = keep_alive
         self.save_screenshot_on_error = save_screenshot_on_error
 
-        self._errors_handling = ErrorsHandling()
         self._driver = None
+        self._is_executing = False
     
     @property
     def driver(self) -> WebDriver:
@@ -56,39 +161,27 @@ class Driver:
     def wait(
         self,
         locator: WebElement | tuple[str, str],
-        expected_condition: Callable = EC.presence_of_element_located,
-        timeout: float = 10,
-        timeout_handler: Callable | None = None
-    ) -> WebElement:
+        expected_condition: Callable[..., Callable[..., T_EC]] = EC.presence_of_element_located,
+        timeout: float = 10
+    ) -> T_EC:
         
         self._check_locator(locator)
         if expected_condition is not None and not callable(expected_condition):
             raise TypeError(f"O parâmetro 'expected_condition' deve ser do tipo 'Callable', não {type(expected_condition).__name__}")
 
-        try:
-            return WebDriverWait(self.driver, timeout).until(expected_condition(locator))
-        except TimeoutException:
-            if timeout_handler is not None:
-                return timeout_handler()
-            raise
+        return WebDriverWait(self.driver, timeout).until(expected_condition(locator))
     
     @error_handling
     def wait_not(self,
         locator: WebElement | tuple[str, str],
-        expected_condition: Callable = EC.presence_of_element_located,
-        timeout: float = 10,
-        timeout_handler: Callable | None = None
-    ) -> WebElement | Literal[True]:
+        expected_condition: Callable[..., Callable[..., T_EC]] = EC.presence_of_element_located,
+        timeout: float = 10
+    ) -> T_EC | Literal[True]:
     
         if expected_condition is not None and not callable(expected_condition):
             raise TypeError(f"O parâmetro 'expected_condition' deve ser do tipo 'Callable', não {type(expected_condition).__name__}")
         
-        try:
-            return WebDriverWait(self.driver, timeout).until_not(expected_condition(locator))
-        except TimeoutException:
-            if timeout_handler is not None:
-                return timeout_handler()
-            raise
+        return WebDriverWait(self.driver, timeout).until_not(expected_condition(locator))
     
     @error_handling
     def find_element(
@@ -96,22 +189,12 @@ class Driver:
         by: str,
         value: str,
         expected_condition: Callable | None = EC.presence_of_element_located,
-        timeout: float = 1,
-        exceptions_handlers: dict[type[Exception], Callable] | None = None
+        timeout: float = 1
     ) -> WebElement:
         
-        if exceptions_handlers is not None and not isinstance(exceptions_handlers, dict):
-            raise TypeError(f"O parâmetro 'exceptions_handlers' deve ser do tipo 'dict', não {type(exceptions_handlers).__name__}")
-        
-        try:
-            if expected_condition is not None:
-                return self.wait((by, value), expected_condition, timeout)
-            return self.driver.find_element(by, value)
-        except Exception as e:
-            if exceptions_handlers is None or type(e) not in exceptions_handlers:
-                raise
-            handler = exceptions_handlers[type(e)]
-            return handler(e)
+        if expected_condition is not None:
+            return self.wait((by, value), expected_condition, timeout)
+        return self.driver.find_element(by, value)
     
     @error_handling
     def find_elements(
@@ -119,47 +202,27 @@ class Driver:
         by: str,
         value: str,
         expected_condition: Callable | None = EC.presence_of_all_elements_located,
-        timeout: float = 10,
-        exceptions_handlers: dict[type[Exception], Callable] | None = None
+        timeout: float = 10
     ) -> list[WebElement]:
         
-        if exceptions_handlers is not None and not isinstance(exceptions_handlers, dict):
-            raise TypeError(f"O parâmetro 'exceptions_handlers' deve ser do tipo 'dict', não {type(exceptions_handlers).__name__}")
-        
-        try:
-            if expected_condition is not None:
-                self.wait((by, value), expected_condition, timeout)
-            return self.driver.find_elements(by, value)
-        except Exception as e:
-            if exceptions_handlers is None or type(e) not in exceptions_handlers:
-                raise
-            handler = exceptions_handlers[type(e)]
-            return handler(e)
+        if expected_condition is not None:
+            return self.wait((by, value), expected_condition, timeout)
+        return self.driver.find_elements(by, value)
     
     @error_handling
     def click(
         self,
-        locator: WebElement | tuple[str, str],
-        exceptions_handlers: dict[type[Exception], Callable] | None = None
+        locator: WebElement | tuple[str, str]
     ) -> None:
 
         self._check_locator(locator)
-        try:
-            self.wait(locator, EC.element_to_be_clickable).click()
-        except Exception as e:
-            if exceptions_handlers is not None and type(e) in exceptions_handlers:
-                handler = exceptions_handlers[type(e)]
-                return handler(e)
-            raise
+        self.wait(locator, EC.element_to_be_clickable).click()
     
     @error_handling
     def hover(self, locator: WebElement | tuple[str, str]) -> None:
         """Move o mouse para cima do elemento especificado."""
         self._check_locator(locator)
-        if isinstance(locator, tuple):
-            element = self.find_element(*locator)
-        else:
-            element = locator
+        element = self._get_element(locator)
         
         actions = ActionChains(self.driver)
         actions.move_to_element(element)
@@ -174,10 +237,7 @@ class Driver:
     ) -> None:
         
         self._check_locator(locator)
-        if self._is_web_element(locator):
-            element = locator
-        else:
-            element = self.find_element(*locator)
+        element = self._get_element(locator)
         
         if clear:
             element.clear()
@@ -269,7 +329,7 @@ class Driver:
         """Salva um screenshot do driver."""
 
         if path is None:
-            path = os.path.join(os.getcwd(), 'screenshots', f'screenshot_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png')
+            path = os.path.join(os.getcwd(), 'screenshots', f'{datetime.now().strftime('%Y%m%d_%H%M%S')}.png')
         
         os.makedirs(os.path.dirname(path), exist_ok=True)
         
@@ -279,66 +339,39 @@ class Driver:
         except Exception as e:
             logging.error(f"Falha ao salvar screenshot. Erro:\n{e}")
     
-    def error_handling(
+    def execution_context(
         self,
-        func: Callable | None = None,
-        on_error: Literal['raise', 'ignore'] = 'raise',
+        func: Callable,
+        on_error: dict[type[Exception], Callable] | None = None,
         screenshot: bool = True,
-        log_level: int | None = logging.ERROR,
-        retries: int = 0,
-        retry_delay: float = 1.0,
-        default_return: Any = None
-    ) -> Callable:
-        """
-        Decorador configurável para manipulação de erros em métodos do Driver.
-
-        Args:
-            on_error (str): Ação a tomar em caso de erro.
-                'raise': Relança a exceção (padrão).
-                'ignore': Suprime a exceção e retorna 'default_return'.
-                'retry': Tenta executar o método novamente.
-            screenshot (bool): Se True, salva um screenshot em caso de erro.
-            log_level (int): Nível do logging (ex: logging.INFO, logging.WARNING, logging.ERROR).
-            retries (int): Número de tentativas extras após a primeira falha.
-            retry_delay (float): Tempo em segundos para esperar entre as tentativas.
-            default_return (Any): Valor a ser retornado se on_error='ignore'.
-        """
-        return self._errors_handling.error_handling(
+        log_level: int | None = logging.INFO
+    ) -> ExecutionContext:
+        
+        return ExecutionContext(
+            driver=self,
             func=func,
             on_error=on_error,
             screenshot=screenshot,
-            log_level=log_level,
-            retries=retries,
-            retry_delay=retry_delay
+            log_level=log_level
         )
     
-    def error_context(
-        self,
-        func: Callable,
-        on_error: str | Literal['raise', 'ignore'] = 'raise',
-        screenshot: bool = True,
-        log_level: int | None = logging.ERROR,
-        max_attempts: int = 0,
-        retry_delay: float = 0.5
-    ) -> ErrorsHandling:
-        
-        return self._errors_handling.context(
-            driver = self,
-            on_error = on_error,
-            screenshot = screenshot and self.save_screenshot_on_error,
-            log_level = log_level,
-            max_attempts = max_attempts,
-            retry_delay = retry_delay,
-            func=func
-        )
+    def start_execution(self) -> None:
+        """Inicia o contexto de execução do driver."""
+        self._is_executing = True
     
-    def is_in_error_handling(self) -> bool:
-        """Verifica se o driver está atualmente em um tratamento de erro."""
-        return self._errors_handling.is_in_error_handling()
+    def stop_execution(self) -> None:
+        """Encerra o contexto de execução do driver."""
+        self._is_executing = False
+
+    def is_executing(self) -> bool:
+        """Verifica se o driver está atualmente executando um comando."""
+        return self._is_executing
     
-    def raise_last_exception(self) -> None:
-        """Relança a última exceção registrada no contexto de erro."""
-        self._errors_handling.raise_last_exception()
+    def _get_element(self, locator: WebElement | tuple[str, str]) -> WebElement:
+        """Retorna um elemento localizado pelo seletor especificado."""
+        if self._is_web_element(locator):
+            return locator
+        return self.find_element(*locator)
     
     def _start_driver(self) -> WebDriver:
         return WebDriver(self.options, self.service, self.keep_alive)
