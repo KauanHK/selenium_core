@@ -10,9 +10,10 @@ from selenium.common.exceptions import TimeoutException
 from handling import on_error
 from config import Config
 from log import get_logger
+from datetime import datetime
 import os
 from typing import Callable, Self, Literal, Any, TypeIs, TypeVar
-        
+
 
 T_EC = TypeVar('T_EC')
 
@@ -22,12 +23,14 @@ class Driver:
         self,
         options: Options | None = None,
         service: Service | None = None,
-        keep_alive: bool = True
+        keep_alive: bool = True,
+        save_screenshot_on_error: bool = True
     ) -> None:
         
         self.options = options
         self.service = service
         self.keep_alive = keep_alive
+        self._save_screenshot_on_error = save_screenshot_on_error
 
         self._logger = get_logger()
         self._driver = None
@@ -233,12 +236,20 @@ class Driver:
         select = Select(element)
         select.select_by_visible_text(text)
     
-    def save_screenshot(self, file_path: str | None = None) -> None:
-        """Salva um screenshot do driver."""
-
-        if file_path is None:
-            file_path = Config.SCREENSHOT_FILE_PATH
-
+    def save_screenshot(self, context_name: str | None = None) -> None:
+        """
+        Salva um screenshot do driver com um nome de arquivo dinâmico e informativo.
+        
+        Args:
+            context_name: Um nome para o contexto (ex: o nome da função que falhou).
+        """
+        timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        if context_name is not None:
+            file_name = f"{timestamp}_{context_name}.png"
+        else:
+            file_name = f"{timestamp}.png"
+        
+        file_path = os.path.join(Config.SCREENSHOT_DIR, file_name)
         os.makedirs(os.path.dirname(file_path), exist_ok=True)
         
         try:
@@ -247,18 +258,6 @@ class Driver:
         except Exception as e:
             self._logger.error(f"Falha ao salvar screenshot. Erro:\n{e}")
 
-    def start_execution(self) -> None:
-        """Inicia o contexto de execução do driver."""
-        self._is_executing = True
-    
-    def stop_execution(self) -> None:
-        """Encerra o contexto de execução do driver."""
-        self._is_executing = False
-
-    def is_executing(self) -> bool:
-        """Verifica se o driver está atualmente executando um comando."""
-        return self._is_executing
-    
     def _get_element(self, locator: WebElement | tuple[str, str]) -> WebElement:
         """Retorna um elemento localizado pelo seletor especificado."""
         if self._is_web_element(locator):
