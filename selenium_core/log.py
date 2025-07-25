@@ -1,5 +1,6 @@
 import logging
 import os
+from datetime import datetime
 from .config import Config
 
 
@@ -20,7 +21,8 @@ class _Logger:
         formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
 
         # Handler para arquivo
-        file_path = file_path if file_path is not None else Config.LOG_FILE_PATH
+        if file_path is None:
+            file_path = os.path.join(Config.LOG_DIR, f'{datetime.now().strftime("%d-%m-%Y_%H-%M")}.log')
 
         os.makedirs(os.path.dirname(file_path), exist_ok=True)
         file_handler = logging.FileHandler(file_path, mode='w', encoding='utf-8')

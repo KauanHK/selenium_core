@@ -13,7 +13,7 @@ from .log import get_logger
 from datetime import datetime
 import os
 from .utils import get_predicate, get_locator, is_web_element
-from typing import Callable, Self, Literal, Any
+from typing import Callable, Self, Any
 from .types import ExpectedConditionPredicate, T_EC
 
 
@@ -30,9 +30,10 @@ class Driver:
         self.options = options
         self.service = service
         self.keep_alive = keep_alive
+        self.logger = get_logger()
+
         self._save_screenshot_on_error = save_screenshot_on_error
 
-        self._logger = get_logger()
         self._driver = None
         self._is_executing = False
     
@@ -47,19 +48,19 @@ class Driver:
         return self._driver is not None
     
     def init(self) -> None:
-        self._logger.info("Iniciando driver")
+        self.logger.info("Iniciando driver")
         self.quit()
         self._driver = self._start_driver()
     
     def quit(self) -> None:
         if self._driver is not None:
-            self._logger.info("Fechando driver")
+            self.logger.info("Fechando driver")
             self._driver.quit()
             self._driver = None
 
     @on_error
     def get(self, url: str) -> None:
-        self._logger.info(f"Acessando URL: {url}")
+        self.logger.info(f"Acessando URL: {url}")
         self.driver.get(url)
 
     @on_error
@@ -70,24 +71,25 @@ class Driver:
     ) -> T_EC:
 
         ec_predicate = get_predicate(locator)
-        self._logger.debug(f"Aguardando o elemento {locator} por {timeout} segundos")
+        self.logger.debug(f"Aguardando o elemento {locator} por {timeout} segundos")
         return WebDriverWait(self.driver, timeout).until(ec_predicate)
     
     @on_error
     def wait_not(self,
-        locator: tuple[str, str] | ExpectedConditionPredicate,
+        locator: tuple[str, str] | Callable[..., T_EC],
         timeout: float = 30
-    ) -> WebElement | Literal[True]:
+    ) -> T_EC:
     
         ec_predicate = get_predicate(locator)
-        self._logger.debug(f"Aguardando o elemento {locator} não estar mais presente por {timeout} segundos")
+        self.logger.debug(f"Aguardando o elemento {locator} não estar mais presente por {timeout} segundos")
         return WebDriverWait(self.driver, timeout).until_not(ec_predicate)
     
     @on_error
     def find_element(
         self,
         by: str,
-        value: str
+        value: str,
+        timeout: float = 30
     ) -> WebElement:
         """ Encontra um único elemento na página.
         
@@ -95,14 +97,16 @@ class Driver:
             by: O método de localização (ex: 'id', 'xpath', etc).
             value: O valor do seletor.
         """
-        self._logger.debug(f"Procurando elemento por {by}='{value}'")
-        return self.driver.find_element(by, value)
+        ec_predicate = get_predicate((by, value), EC.presence_of_element_located)
+        self.logger.debug(f"Procurando elemento por {by}='{value}'")
+        return self.wait(ec_predicate, timeout)
 
     @on_error
     def find_elements(
         self,
         by: str,
-        value: str
+        value: str,
+        timeout: float = 30
     ) -> list[WebElement]:
         """
         Encontra múltiplos elementos na página.
@@ -116,8 +120,9 @@ class Driver:
         Returns:
             Uma lista de WebElements encontrados.
         """
-        self._logger.debug(f"Procurando elementos por {by}='{value}'")
-        return self.driver.find_elements(by, value)
+        ec_predicate = get_predicate((by, value), EC.presence_of_all_elements_located)
+        self.logger.debug(f"Procurando elementos por {by}='{value}'")
+        return self.wait(ec_predicate, timeout)
     
     @on_error
     def click(
@@ -128,7 +133,7 @@ class Driver:
         
         locator = get_locator(locator, EC.element_to_be_clickable)
         element = self.wait(locator, timeout)
-        self._logger.debug('Clicando no elemento')
+        self.logger.debug('Clicando no elemento')
         element.click()
 
     @on_error
@@ -141,7 +146,7 @@ class Driver:
 
         locator = get_locator(locator, EC.element_to_be_clickable)
         element = self.wait(locator, timeout)
-        self._logger.debug(f"Movendo o mouse para o elemento: {locator}")
+        self.logger.debug(f"Movendo o mouse para o elemento: {locator}")
         actions = ActionChains(self.driver)
         actions.move_to_element(element)
         actions.perform()
@@ -159,16 +164,16 @@ class Driver:
         element = self.wait(locator, timeout)
 
         if clear:
-            self._logger.debug(f"Limpando o campo: {locator}")
+            self.logger.debug(f"Limpando o campo: {locator}")
             element.clear()
 
-        self._logger.debug(f"Enviando texto {keys} para o elemento: {locator}")
+        self.logger.debug(f"Enviando texto {keys} para o elemento: {locator}")
         element.send_keys(keys)
 
     @on_error
     def execute_script(self, script: str, *args) -> Any:
         """Executa um script JavaScript e retorna o resultado."""
-        self._logger.debug(f"Executando script: {script} com argumentos: {args}")
+        self.logger.debug(f"Executando script: {script} com argumentos: {args}")
         return self.driver.execute_script(script, *args)
     
     def switch_to_window(self, window_index: int = -1) -> None:
@@ -181,7 +186,7 @@ class Driver:
     def get_text(self, locator: WebElement | tuple[str, str]) -> str:
         """Retorna o texto de um elemento."""
         element = self._get_element(locator)
-        self._logger.debug(f"Obtendo texto do elemento: {locator}")
+        self.logger.debug(f"Obtendo texto do elemento: {locator}")
         return element.text
     
     def is_visible(self, locator: tuple[str, str], timeout: float = 30) -> bool:
@@ -195,43 +200,43 @@ class Driver:
     def is_enabled(self, locator: WebElement | tuple[str, str]) -> bool:
         """Verifica se um elemento está habilitado."""
         element = self._get_element(locator)
-        self._logger.debug(f"Verificando se o elemento está habilitado: {locator}")
+        self.logger.debug(f"Verificando se o elemento está habilitado: {locator}")
         return element.is_enabled()
     
     def get_title(self) -> str:
         """Retorna o título da página atual."""
-        self._logger.debug("Obtendo título da página atual")
+        self.logger.debug("Obtendo título da página atual")
         return self.driver.title
 
     def get_current_url(self) -> str:
         """Retorna a URL da página atual."""
-        self._logger.debug("Obtendo URL da página atual")
+        self.logger.debug("Obtendo URL da página atual")
         return self.driver.current_url
     
     @on_error
     def scroll_to_element(self, locator: WebElement | tuple[str, str]) -> None:
         """Rola a página até que o elemento esteja visível."""
         element = self._get_element(locator)
-        self._logger.debug(f"Scrollando a página até o elemento: {locator}")
+        self.logger.debug(f"Scrollando a página até o elemento: {locator}")
         self.execute_script("arguments[0].scrollIntoView(true);", element)
 
     @on_error
     def scroll_to_bottom(self) -> None:
         """Rola a página até o final."""
-        self._logger.debug("Scrollando a página até o final")
+        self.logger.debug("Scrollando a página até o final")
         self.execute_script("window.scrollTo(0, document.body.scrollHeight);")
 
     @on_error
     def scroll_to_top(self) -> None:
         """Rola a página até o topo."""
-        self._logger.debug("Scrollando a página até o topo")
+        self.logger.debug("Scrollando a página até o topo")
         self.execute_script("window.scrollTo(0, 0);")
     
     @on_error
     def select_by_value(self, locator: tuple[str, str], value: str) -> None:
         """Seleciona uma opção em um dropdown pelo seu atributo 'value'."""
         element = self.find_element(*locator)
-        self._logger.debug(f"Selecionando opção com value '{value}' no dropdown: {locator}")
+        self.logger.debug(f"Selecionando opção com value '{value}' no dropdown: {locator}")
         select = Select(element)
         select.select_by_value(value)
 
@@ -239,7 +244,7 @@ class Driver:
     def select_by_visible_text(self, locator: tuple[str, str], text: str) -> None:
         """Seleciona uma opção em um dropdown pelo texto visível."""
         element = self.find_element(*locator)
-        self._logger.debug(f"Selecionando opção com texto visível '{text}' no dropdown: {locator}")
+        self.logger.debug(f"Selecionando opção com texto visível '{text}' no dropdown: {locator}")
         select = Select(element)
         select.select_by_visible_text(text)
     
@@ -261,9 +266,9 @@ class Driver:
         
         try:
             self.driver.save_screenshot(file_path)
-            self._logger.info(f"Screenshot salvo em: {file_path}")
+            self.logger.info(f"Screenshot salvo em: {file_path}")
         except Exception as e:
-            self._logger.error(f"Falha ao salvar screenshot. Erro:\n{e}")
+            self.logger.error(f"Falha ao salvar screenshot. Erro:\n{e}")
 
     def _get_element(self, locator: WebElement | tuple[str, str]) -> WebElement:
         """Retorna um elemento localizado pelo seletor especificado."""

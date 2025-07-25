@@ -1,21 +1,15 @@
-from .config import Config
-from .log import get_logger
 from functools import wraps
-from typing import Callable, TypeVar, ParamSpec, Self
+from typing import Callable, TypeVar, ParamSpec, Self, TYPE_CHECKING
 
+if TYPE_CHECKING:
+    from .driver import Driver
 
-logger = get_logger()
 
 class _ExecutionContext:
 
-    _is_executing: bool = False
-
-    def __init__(self, driver, func: Callable) -> None:
+    def __init__(self, driver: 'Driver', func: Callable) -> None:
         self.driver = driver
         self.func = func
-
-    def is_executing(self) -> bool:
-        return self.driver.is_executing()
 
     def __enter__(self) -> Self:
         self.driver.start_execution()
@@ -26,8 +20,7 @@ class _ExecutionContext:
         if exc_value is None:
             return
         
-        if Config.LOG_FILE_PATH is not None and Config.LOG_FILE_PATH is not None:
-            logger.error(f"Erro ao executar {self.func.__name__}: {exc_value}")
+        self.driver.logger.error(f"Erro ao executar {self.func.__name__}: {exc_value}")
 
         if self.driver._save_screenshot_on_error:
             self.driver.save_screenshot(self.func.__name__)
@@ -36,16 +29,15 @@ class _ExecutionContext:
 P = ParamSpec('P')
 T = TypeVar('T')
 
-def on_error(func: Callable[P, T]) -> Callable[P, T]:
+def on_error(func: Callable[..., T]) -> Callable[..., T]:
 
     @wraps(func)
-    def wrapper(*args: P.args, **kwargs: P.kwargs) -> T:
+    def wrapper(driver: 'Driver', *args: P.args, **kwargs: P.kwargs) -> T:
 
-        driver = args[0]
         if driver.is_executing():
-            return func(*args, **kwargs)
+            return func(driver, *args, **kwargs)
 
         with _ExecutionContext(driver, func):
-            return func(*args, **kwargs)
-        
+            return func(driver, *args, **kwargs)
+
     return wrapper
