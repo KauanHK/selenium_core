@@ -42,5 +42,5 @@ class _Logger:
 
 
 
-def get_logger(log_level: int = logging.INFO, file_path: str | None = None) -> logging.Logger:
+def get_logger(log_level: int | None = None, file_path: str | None = None) -> logging.Logger:
     return _Logger.get_logger(log_level, file_path)
