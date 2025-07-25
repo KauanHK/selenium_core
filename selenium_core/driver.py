@@ -7,9 +7,9 @@ from selenium.webdriver.common.action_chains import ActionChains
 from selenium.webdriver.support.ui import Select
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException
-from handling import on_error
-from config import Config
-from log import get_logger
+from .handling import on_error
+from .config import Config
+from .log import get_logger
 from datetime import datetime
 import os
 from typing import Callable, Self, Literal, Any, TypeIs, TypeVar

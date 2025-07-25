@@ -1,5 +1,5 @@
-from config import Config
-from log import get_logger
+from .config import Config
+from .log import get_logger
 from functools import wraps
 from typing import Callable, TypeVar, ParamSpec, Self
 
