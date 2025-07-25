@@ -14,24 +14,15 @@ class _ExecutionContext:
         self.driver = driver
         self.func = func
 
-    @classmethod
-    def is_executing(cls) -> bool:
-        return cls._is_executing
-
-    @classmethod
-    def start_execution(cls) -> None:
-        cls._is_executing = True
-
-    @classmethod
-    def stop_execution(cls) -> None:
-        cls._is_executing = False
+    def is_executing(self) -> bool:
+        return self.driver.is_executing()
 
     def __enter__(self) -> Self:
-        self.start_execution()
+        self.driver.start_execution()
         return self
     
     def __exit__(self, exc_type, exc_value, traceback) -> None:
-        self.stop_execution()
+        self.driver.stop_execution()
         if exc_value is None:
             return
         
@@ -51,7 +42,7 @@ def on_error(func: Callable[P, T]) -> Callable[P, T]:
     def wrapper(*args: P.args, **kwargs: P.kwargs) -> T:
 
         driver = args[0]
-        if _ExecutionContext.is_executing():
+        if driver.is_executing():
             return func(*args, **kwargs)
 
         with _ExecutionContext(driver, func):

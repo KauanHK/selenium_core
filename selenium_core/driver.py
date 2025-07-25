@@ -12,10 +12,10 @@ from .config import Config
 from .log import get_logger
 from datetime import datetime
 import os
-from typing import Callable, Self, Literal, Any, TypeIs, TypeVar
+from .utils import get_predicate, get_locator, is_web_element
+from typing import Callable, Self, Literal, Any
+from .types import ExpectedConditionPredicate, T_EC
 
-
-T_EC = TypeVar('T_EC')
 
 class Driver:
 
@@ -48,7 +48,6 @@ class Driver:
     
     def init(self) -> None:
         self._logger.info("Iniciando driver")
-
         self.quit()
         self._driver = self._start_driver()
     
@@ -66,75 +65,82 @@ class Driver:
     @on_error
     def wait(
         self,
-        locator: WebElement | tuple[str, str],
-        expected_condition: Callable[..., Callable[..., T_EC]] = EC.presence_of_element_located,
+        locator: tuple[str, str] | Callable[..., T_EC],
         timeout: float = 30
     ) -> T_EC:
-        
-        self._check_locator(locator)
-        if expected_condition is not None and not callable(expected_condition):
-            raise TypeError(f"O parâmetro 'expected_condition' deve ser do tipo 'Callable', não {type(expected_condition).__name__}")
 
-        self._logger.debug(f"Aguardando elemento: {locator} com condição: {expected_condition.__name__} por {timeout} segundos")
-        return WebDriverWait(self.driver, timeout).until(expected_condition(locator))
+        ec_predicate = get_predicate(locator)
+        self._logger.debug(f"Aguardando o elemento {locator} por {timeout} segundos")
+        return WebDriverWait(self.driver, timeout).until(ec_predicate)
     
     @on_error
     def wait_not(self,
-        locator: WebElement | tuple[str, str],
-        expected_condition: Callable[..., Callable[..., T_EC]] = EC.presence_of_element_located,
+        locator: tuple[str, str] | ExpectedConditionPredicate,
         timeout: float = 30
-    ) -> T_EC | Literal[True]:
+    ) -> WebElement | Literal[True]:
     
-        if expected_condition is not None and not callable(expected_condition):
-            raise TypeError(f"Aguardando elemento: {locator} com condição: {expected_condition.__name__} por {timeout} segundos")
-
-        self._logger.debug(f"Aguardando elemento: {locator} com condição: not {expected_condition.__name__} por {timeout} segundos")
-        return WebDriverWait(self.driver, timeout).until_not(expected_condition(locator))
+        ec_predicate = get_predicate(locator)
+        self._logger.debug(f"Aguardando o elemento {locator} não estar mais presente por {timeout} segundos")
+        return WebDriverWait(self.driver, timeout).until_not(ec_predicate)
     
     @on_error
     def find_element(
         self,
         by: str,
-        value: str,
-        expected_condition: Callable | None = EC.presence_of_element_located,
-        timeout: float = 30
+        value: str
     ) -> WebElement:
+        """ Encontra um único elemento na página.
         
-        if expected_condition is not None:
-            return self.wait((by, value), expected_condition, timeout)
+        Args:
+            by: O método de localização (ex: 'id', 'xpath', etc).
+            value: O valor do seletor.
+        """
+        self._logger.debug(f"Procurando elemento por {by}='{value}'")
         return self.driver.find_element(by, value)
-    
+
     @on_error
     def find_elements(
         self,
         by: str,
-        value: str,
-        expected_condition: Callable | None = EC.presence_of_all_elements_located,
-        timeout: float = 30
+        value: str
     ) -> list[WebElement]:
+        """
+        Encontra múltiplos elementos na página.
         
-        if expected_condition is not None:
-            return self.wait((by, value), expected_condition, timeout)
+        Args:
+            by: O método de localização (ex: 'id', 'xpath', etc).
+            value: O valor do seletor.
+            expected_condition: Uma função que retorna uma condição esperada.
+            timeout: Tempo máximo para aguardar os elementos.
+        
+        Returns:
+            Uma lista de WebElements encontrados.
+        """
+        self._logger.debug(f"Procurando elementos por {by}='{value}'")
         return self.driver.find_elements(by, value)
     
     @on_error
     def click(
         self,
-        locator: WebElement | tuple[str, str]
+        locator: WebElement | tuple[str, str] | ExpectedConditionPredicate,
+        timeout: float = 30
     ) -> None:
-
-        self._check_locator(locator)
-        element = self.wait(locator, EC.element_to_be_clickable)
-
-        self._logger.debug(f"Clicando no elemento: {locator}")
+        
+        locator = get_locator(locator, EC.element_to_be_clickable)
+        element = self.wait(locator, timeout)
+        self._logger.debug('Clicando no elemento')
         element.click()
 
     @on_error
-    def hover(self, locator: WebElement | tuple[str, str]) -> None:
+    def hover(
+        self,
+        locator: WebElement | tuple[str, str] | ExpectedConditionPredicate,
+        timeout: float = 30
+    ) -> None:
         """Move o mouse para cima do elemento especificado."""
-        self._check_locator(locator)
-        element = self._get_element(locator)
 
+        locator = get_locator(locator, EC.element_to_be_clickable)
+        element = self.wait(locator, timeout)
         self._logger.debug(f"Movendo o mouse para o elemento: {locator}")
         actions = ActionChains(self.driver)
         actions.move_to_element(element)
@@ -143,14 +149,15 @@ class Driver:
     @on_error
     def send_keys(
         self,
-        locator: WebElement | tuple[str, str],
+        locator: WebElement | tuple[str, str] | ExpectedConditionPredicate,
         keys: str,
+        timeout: float = 30,
         clear: bool = True
     ) -> None:
         
-        self._check_locator(locator)
-        element = self._get_element(locator)
-        
+        locator = get_locator(locator, EC.element_to_be_clickable)
+        element = self.wait(locator, timeout)
+
         if clear:
             self._logger.debug(f"Limpando o campo: {locator}")
             element.clear()
@@ -177,10 +184,10 @@ class Driver:
         self._logger.debug(f"Obtendo texto do elemento: {locator}")
         return element.text
     
-    def is_visible(self, locator: tuple[str, str], timeout: float = 5) -> bool:
+    def is_visible(self, locator: tuple[str, str], timeout: float = 30) -> bool:
         """Verifica se um elemento está visível na página."""
         try:
-            self.wait(locator, EC.visibility_of_element_located, timeout)
+            self.wait(EC.visibility_of_element_located(locator), timeout)
             return True
         except TimeoutException:
             return False
@@ -260,30 +267,22 @@ class Driver:
 
     def _get_element(self, locator: WebElement | tuple[str, str]) -> WebElement:
         """Retorna um elemento localizado pelo seletor especificado."""
-        if self._is_web_element(locator):
+        if is_web_element(locator):
             return locator
-        return self.find_element(*locator, expected_condition=None)
+        return self.find_element(*locator)
 
     def _start_driver(self) -> WebDriver:
         return WebDriver(self.options, self.service, self.keep_alive)
     
-    def _check_locator(self, locator: WebElement | tuple[str, str]) -> bool:
+    def start_execution(self) -> None:
+        self._is_executing = True
+    
+    def stop_execution(self) -> None:
+        self._is_executing = False
+    
+    def is_executing(self) -> bool:
+        return self._is_executing
 
-        if self._is_web_element(locator):
-            return True
-        
-        if self._is_by_tuple(locator):
-            return True
-        
-        self._logger.error(f"O parâmetro 'locator' deve ser do tipo 'WebElement' ou 'tuple', não {type(locator).__name__}")
-        raise TypeError(f"O parâmetro 'locator' deve ser do tipo 'WebElement' ou 'tuple', não {type(locator).__name__}")
-    
-    def _is_web_element(self, element: Any) -> TypeIs[WebElement]:
-        return isinstance(element, WebElement)
-    
-    def _is_by_tuple(self, element: Any) -> TypeIs[tuple[str, str]]:
-        return isinstance(element, tuple) and len(element) == 2 and isinstance(element[0], str) and isinstance(element[1], str)
-    
     def __enter__(self) -> Self:
         self.init()
         return self
