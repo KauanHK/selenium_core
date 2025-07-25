@@ -53,3 +53,35 @@ def get_locator(
     if not callable(locator):
         return expected_condition(locator)
     return locator
+
+
+def describe_element(element: WebElement) -> str:
+    """Cria uma descrição legível para um WebElement, parecida com uma tag HTML."""
+    if not is_web_element(element):
+        return str(element)
+    
+    try:
+        tag = element.tag_name
+        
+        attrs = []
+        for attr in ['id', 'class', 'name', 'href', 'data-widget-id']:
+            value = element.get_attribute(attr)
+            if value:
+                attrs.append(f'{attr}="{value}"')
+        
+        text = element.text.strip().replace('\n', ' ')
+        text_snippet = (text[:40] + '...') if len(text) > 40 else text
+        
+        attr_str = ' '.join(attrs)
+        return f"<{tag} {attr_str}>{text_snippet}</{tag}>"
+        
+    except Exception:
+        # Fallback caso o elemento se torne "stale" durante a descrição
+        return "<WebElement (expirado ou inacessível)>"
+
+
+def describe_predicate(predicate: Callable[..., T_EC]) -> str:
+    """Retorna o nome da função de condição esperada."""
+    start = 10
+    end = str(predicate).index('.')
+    return str(predicate)[start:end]

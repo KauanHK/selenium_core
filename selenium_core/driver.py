@@ -15,7 +15,7 @@ from typing import Callable, Self, Any
 from .handling import on_error
 from .config import Config
 from .log import get_logger
-from .utils import get_predicate, get_locator, is_web_element
+from .utils import get_predicate, get_locator, is_web_element, describe_element, describe_predicate
 from .types import ExpectedConditionPredicate, T_EC
 
 
@@ -88,7 +88,7 @@ class Driver:
 
         timeout = timeout if timeout is not None else self.default_timeout
         ec_predicate = get_predicate(locator)
-        self.logger.debug(f"Aguardando a condição {ec_predicate} por {timeout} segundos")
+        self.logger.debug(f"Aguardando a condição {describe_predicate(ec_predicate)} por até {timeout} segundos")
         return WebDriverWait(self.driver, timeout).until(ec_predicate)
     
     @on_error
@@ -99,7 +99,7 @@ class Driver:
 
         timeout = timeout if timeout is not None else self.default_timeout
         ec_predicate = get_predicate(locator)
-        self.logger.debug(f"Aguardando a não condição {ec_predicate} por {timeout} segundos")
+        self.logger.debug(f"Aguardando a não condição {describe_predicate(ec_predicate)} por até {timeout} segundos")
         return WebDriverWait(self.driver, timeout).until_not(ec_predicate)
     
     @on_error
@@ -117,7 +117,7 @@ class Driver:
         """
         timeout = timeout if timeout is not None else self.default_timeout
         ec_predicate = get_predicate((by, value), EC.presence_of_element_located)
-        self.logger.debug(f"Procurando elemento por {by}='{value}'")
+        self.logger.info(f"Procurando elemento por {by}='{value}'")
         return self.wait(ec_predicate, timeout)
 
     @on_error
@@ -141,7 +141,7 @@ class Driver:
         """
         timeout = timeout if timeout is not None else self.default_timeout
         ec_predicate = get_predicate((by, value), EC.presence_of_all_elements_located)
-        self.logger.debug(f"Procurando elementos por {by}='{value}'")
+        self.logger.info(f"Procurando elementos por {by}='{value}'")
         return self.wait(ec_predicate, timeout)
     
     @on_error
@@ -153,7 +153,7 @@ class Driver:
         timeout = timeout if timeout is not None else self.default_timeout
         locator = get_locator(locator, EC.element_to_be_clickable)
         element = self.wait(locator, timeout)
-        self.logger.debug('Clicando no elemento')
+        self.logger.info(f'Clicando no elemento {describe_element(element)}')
         element.click()
 
     @on_error
@@ -168,7 +168,7 @@ class Driver:
         locator = get_locator(locator, EC.element_to_be_clickable)
         element = self.wait(locator, timeout)
 
-        self.logger.debug(f"Movendo o mouse para o elemento: {element}")
+        self.logger.info(f"Movendo o mouse para o elemento: {describe_element(element)}")
         actions = ActionChains(self.driver)
         actions.move_to_element(element)
         actions.perform()
@@ -187,22 +187,23 @@ class Driver:
         element = self.wait(locator, timeout)
 
         if clear:
-            self.logger.debug(f"Limpando o campo: {locator}")
+            self.logger.info(f"Limpando o campo: {describe_element(element)}")
             element.clear()
 
-        self.logger.debug(f"Enviando texto {keys} para o elemento: {locator}")
+        self.logger.info(f"Enviando texto {keys} para o elemento: {describe_element(element)}")
         element.send_keys(keys)
 
     @on_error
     def execute_script(self, script: str, *args) -> Any:
         """Executa um script JavaScript e retorna o resultado."""
-        self.logger.debug(f"Executando script: {script} com argumentos: {args}")
+        self.logger.info(f"Executando script: {script} com argumentos: {args}")
         return self.driver.execute_script(script, *args)
 
     @on_error
     def switch_to_window(self, window_index: int = -1) -> None:
         """Muda o foco para uma janela/aba diferente."""
         all_windows = self.driver.window_handles
+        self.logger.info(f"Alterando para a janela/aba de índice {window_index}. Total de janelas: {len(all_windows)}")
         try:
             self.driver.switch_to.window(all_windows[window_index])
         except IndexError:
@@ -213,13 +214,14 @@ class Driver:
     def get_text(self, locator: WebElement | tuple[str, str]) -> str:
         """Retorna o texto de um elemento."""
         element = self._get_element(locator)
-        self.logger.debug(f"Obtendo texto do elemento: {locator}")
+        self.logger.info(f"Obtendo texto do elemento: {describe_element(element)}")
         return element.text
     
     def is_visible(self, locator: tuple[str, str], timeout: float | None = None) -> bool:
         """Verifica se um elemento está visível na página."""
         
         timeout = timeout if timeout is not None else self.default_timeout
+        self.logger.info(f"Verificando visibilidade do elemento: {locator}")
         try:
             self.wait(EC.visibility_of_element_located(locator), timeout)
             return True
@@ -229,43 +231,43 @@ class Driver:
     def is_enabled(self, locator: WebElement | tuple[str, str]) -> bool:
         """Verifica se um elemento está habilitado."""
         element = self._get_element(locator)
-        self.logger.debug(f"Verificando se o elemento está habilitado: {locator}")
+        self.logger.info(f"Verificando se o elemento está habilitado: {describe_element(element)}")
         return element.is_enabled()
     
     def get_title(self) -> str:
         """Retorna o título da página atual."""
-        self.logger.debug("Obtendo título da página atual")
+        self.logger.info("Obtendo título da página atual")
         return self.driver.title
 
     def get_current_url(self) -> str:
         """Retorna a URL da página atual."""
-        self.logger.debug("Obtendo URL da página atual")
+        self.logger.info("Obtendo URL da página atual")
         return self.driver.current_url
     
     @on_error
     def scroll_to_element(self, locator: WebElement | tuple[str, str]) -> None:
         """Rola a página até que o elemento esteja visível."""
         element = self._get_element(locator)
-        self.logger.debug(f"Scrollando a página até o elemento: {locator}")
+        self.logger.info(f"Scrollando a página até o elemento: {describe_element(element)}")
         self.execute_script("arguments[0].scrollIntoView(true);", element)
 
     @on_error
     def scroll_to_bottom(self) -> None:
         """Rola a página até o final."""
-        self.logger.debug("Scrollando a página até o final")
+        self.logger.info("Scrollando a página até o final")
         self.execute_script("window.scrollTo(0, document.body.scrollHeight);")
 
     @on_error
     def scroll_to_top(self) -> None:
         """Rola a página até o topo."""
-        self.logger.debug("Scrollando a página até o topo")
+        self.logger.info("Scrollando a página até o topo")
         self.execute_script("window.scrollTo(0, 0);")
     
     @on_error
     def select_by_value(self, locator: tuple[str, str], value: str) -> None:
         """Seleciona uma opção em um dropdown pelo seu atributo 'value'."""
         element = self.find_element(*locator)
-        self.logger.debug(f"Selecionando opção com value '{value}' no dropdown: {locator}")
+        self.logger.info(f"Selecionando opção com value '{value}' no dropdown: {describe_element(element)}")
         select = Select(element)
         select.select_by_value(value)
 
@@ -273,7 +275,7 @@ class Driver:
     def select_by_visible_text(self, locator: tuple[str, str], text: str) -> None:
         """Seleciona uma opção em um dropdown pelo texto visível."""
         element = self.find_element(*locator)
-        self.logger.debug(f"Selecionando opção com texto visível '{text}' no dropdown: {locator}")
+        self.logger.info(f"Selecionando opção com texto visível '{text}' no dropdown: {describe_element(element)}")
         select = Select(element)
         select.select_by_visible_text(text)
     
@@ -299,15 +301,6 @@ class Driver:
         except Exception as e:
             self.logger.error(f"Falha ao salvar screenshot. Erro:\n{e}")
 
-    def _get_element(self, locator: WebElement | tuple[str, str]) -> WebElement:
-        """Retorna um elemento localizado pelo seletor especificado."""
-        if is_web_element(locator):
-            return locator
-        return self.find_element(*locator)
-
-    def _start_driver(self) -> WebDriver:
-        return self._driver_cls(self.options, self.service, self.keep_alive)
-    
     def start_execution(self) -> None:
         self._is_executing = True
     
@@ -317,6 +310,15 @@ class Driver:
     def is_executing(self) -> bool:
         return self._is_executing
 
+    def _get_element(self, locator: WebElement | tuple[str, str]) -> WebElement:
+        """Retorna um elemento localizado pelo seletor especificado."""
+        if is_web_element(locator):
+            return locator
+        return self.find_element(*locator)
+
+    def _start_driver(self) -> WebDriver:
+        return self._driver_cls(self.options, self.service, self.keep_alive)
+    
     def __enter__(self) -> Self:
         self.init()
         return self
