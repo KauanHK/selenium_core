@@ -88,7 +88,7 @@ class Wait:
 
     def element_to_be_clickable(
         self,
-        locator: tuple[str, str],
+        locator: WebElement | tuple[str, str],
         *,
         timeout: float | None = None,
         poll_frequency: float | None = None,
