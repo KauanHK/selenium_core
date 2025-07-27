@@ -6,16 +6,17 @@ from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.support.wait import WebDriverWait
 from selenium.webdriver.common.action_chains import ActionChains
 from selenium.webdriver.support.ui import Select
-from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException
+from selenium.types import WaitExcTypes
 import logging
 from datetime import datetime
 import os
 from typing import Callable, Self, Any
+from .wait import Wait
 from .handling import on_error
 from .config import Config
 from .log import get_logger
-from .utils import get_predicate, get_locator, is_web_element, describe_element, describe_predicate
+from .utils import get_predicate, is_web_element, describe_element, describe_predicate
 from .types import ExpectedConditionPredicate, T_EC
 
 
@@ -29,6 +30,8 @@ class Driver:
         driver_cls: type[WebDriver] = Chrome,
         save_screenshot_on_error: bool = True,
         default_timeout: float = 30,
+        default_poll_frequency: float | None = None,
+        default_ignored_exceptions: WaitExcTypes | None = None,
         logger: logging.Logger | None = None
     ) -> None:
         """
@@ -38,16 +41,18 @@ class Driver:
             options: Opções do Driver.
         """
         
+        self._options = options
+        self._service = service
+        self._keep_alive = keep_alive
         self._driver_cls = driver_cls
-        self.options = options
-        self.service = service
-        self.keep_alive = keep_alive
-        self.default_timeout = default_timeout
-        self.logger = logger if logger is not None else get_logger()
-
         self._save_screenshot_on_error = save_screenshot_on_error
+        self._default_timeout = default_timeout
+        self._default_poll_frequency = default_poll_frequency
+        self._default_ignored_exceptions = default_ignored_exceptions
+        self._logger = logger if logger is not None else get_logger()
 
         self._driver = None
+        self._wait = None
         self._is_executing = False
     
     @property
@@ -56,12 +61,23 @@ class Driver:
             self._driver = self._start_driver()
         return self._driver
     
+    @property
+    def wait(self) -> Wait:
+        if self._wait is None:
+            self._wait = Wait(
+                driver=self.driver,
+                default_timeout=self._default_timeout,
+                default_poll_frequency=self._default_poll_frequency,
+                default_ignored_exceptions=self._default_ignored_exceptions
+            )
+        return self._wait
+    
     def is_initialized(self) -> bool:
         """Verifica se o driver foi inicializado."""
         return self._driver is not None
     
     def init(self) -> None:
-        self.logger.info("Iniciando driver")
+        self._logger.info("Iniciando driver")
         self.quit()
         self._driver = self._start_driver()
     
@@ -70,44 +86,23 @@ class Driver:
         if self._driver is None:
             return
         
-        self.logger.info("Fechando driver")
+        self._logger.info("Fechando driver")
         self._driver.quit()
         self._driver = None
 
     @on_error
     def get(self, url: str) -> None:
-        self.logger.info(f"Acessando URL: {url}")
+        self._logger.info(f"Acessando URL: {url}")
         self.driver.get(url)
 
-    @on_error
-    def wait(
-        self,
-        locator: tuple[str, str] | Callable[..., T_EC],
-        timeout: float | None = None
-    ) -> T_EC:
-
-        timeout = timeout if timeout is not None else self.default_timeout
-        ec_predicate = get_predicate(locator)
-        self.logger.debug(f"Aguardando a condição {describe_predicate(ec_predicate)} por até {timeout} segundos")
-        return WebDriverWait(self.driver, timeout).until(ec_predicate)
-    
-    @on_error
-    def wait_not(self,
-        locator: tuple[str, str] | Callable[..., T_EC],
-        timeout: float | None = None
-    ) -> T_EC:
-
-        timeout = timeout if timeout is not None else self.default_timeout
-        ec_predicate = get_predicate(locator)
-        self.logger.debug(f"Aguardando a não condição {describe_predicate(ec_predicate)} por até {timeout} segundos")
-        return WebDriverWait(self.driver, timeout).until_not(ec_predicate)
-    
     @on_error
     def find_element(
         self,
         by: str,
         value: str,
-        timeout: float | None = None
+        timeout: float | None = None,
+        poll_frequency: float | None = None,
+        ignored_exceptions: WaitExcTypes | None = None
     ) -> WebElement:
         """ Encontra um único elemento na página.
         
@@ -115,17 +110,25 @@ class Driver:
             by: O método de localização (ex: 'id', 'xpath', etc).
             value: O valor do seletor.
         """
-        timeout = timeout if timeout is not None else self.default_timeout
-        ec_predicate = get_predicate((by, value), EC.presence_of_element_located)
-        self.logger.info(f"Procurando elemento por {by}='{value}'")
-        return self.wait(ec_predicate, timeout)
+        timeout, poll_frequency, ignored_exceptions = self._get_wait_params(
+            timeout, poll_frequency, ignored_exceptions
+        )
+        self._logger.info(f'Procurando elemento ({by}="{value}")')
+        return self.wait.presence_of_element_located(
+            locator=(by, value),
+            timeout=timeout,
+            poll_frequency=poll_frequency,
+            ignored_exceptions=ignored_exceptions
+        )
 
     @on_error
     def find_elements(
         self,
         by: str,
         value: str,
-        timeout: float | None = None
+        timeout: float | None = None,
+        poll_frequency: float | None = None,
+        ignored_exceptions: WaitExcTypes | None = None
     ) -> list[WebElement]:
         """
         Encontra múltiplos elementos na página.
@@ -139,36 +142,61 @@ class Driver:
         Returns:
             Uma lista de WebElements encontrados.
         """
-        timeout = timeout if timeout is not None else self.default_timeout
-        ec_predicate = get_predicate((by, value), EC.presence_of_all_elements_located)
-        self.logger.info(f"Procurando elementos por {by}='{value}'")
-        return self.wait(ec_predicate, timeout)
-    
+        timeout, poll_frequency, ignored_exceptions = self._get_wait_params(
+            timeout, poll_frequency, ignored_exceptions
+        )
+        self._logger.info(f"Procurando elementos por {by}='{value}'")
+        return self.wait.presence_of_all_elements_located(
+            locator=(by, value),
+            timeout=timeout,
+            poll_frequency=poll_frequency,
+            ignored_exceptions=ignored_exceptions
+        )
+
     @on_error
     def click(
         self,
-        locator: WebElement | tuple[str, str] | ExpectedConditionPredicate,
-        timeout: float | None = None
+        locator: WebElement | tuple[str, str],
+        timeout: float | None = None,
+        poll_frequency: float | None = None,
+        ignored_exceptions: WaitExcTypes | None = None
     ) -> None:
-        timeout = timeout if timeout is not None else self.default_timeout
-        locator = get_locator(locator, EC.element_to_be_clickable)
-        element = self.wait(locator, timeout)
-        self.logger.info(f'Clicando no elemento {describe_element(element)}')
+        
+        self._logger.info(f"Aguardando o elemento ser clicável: {describe_element(locator)}")
+        timeout, poll_frequency, ignored_exceptions = self._get_wait_params(
+            timeout, poll_frequency, ignored_exceptions
+        )
+        element = self.wait.element_to_be_clickable(
+            locator=locator,
+            timeout=timeout,
+            poll_frequency=poll_frequency,
+            ignored_exceptions=ignored_exceptions
+        )
+        self._logger.info(f'Clicando no elemento {describe_element(element)}')
         element.click()
 
     @on_error
     def hover(
         self,
-        locator: WebElement | tuple[str, str] | ExpectedConditionPredicate,
-        timeout: float | None = None
+        locator: WebElement | tuple[str, str],
+        timeout: float | None = None,
+        poll_frequency: float | None = None,
+        ignored_exceptions: WaitExcTypes | None = None
     ) -> None:
         """Move o mouse para cima do elemento especificado."""
 
-        timeout = timeout if timeout is not None else self.default_timeout
-        locator = get_locator(locator, EC.element_to_be_clickable)
-        element = self.wait(locator, timeout)
+        timeout, poll_frequency, ignored_exceptions = self._get_wait_params(
+            timeout, poll_frequency, ignored_exceptions
+        )
 
-        self.logger.info(f"Movendo o mouse para o elemento: {describe_element(element)}")
+        element = self.wait.element_to_be_clickable(
+            locator=locator,
+            timeout=timeout,
+            poll_frequency=poll_frequency,
+            ignored_exceptions=ignored_exceptions
+        )
+
+        self._logger.info(f"Movendo o mouse para o elemento: {describe_element(element)}")
         actions = ActionChains(self.driver)
         actions.move_to_element(element)
         actions.perform()
@@ -178,52 +206,82 @@ class Driver:
         self,
         locator: WebElement | tuple[str, str] | ExpectedConditionPredicate,
         keys: str,
+        clear: bool = True,
         timeout: float | None = None,
-        clear: bool = True
+        poll_frequency: float | None = None,
+        ignored_exceptions: WaitExcTypes | None = None
     ) -> None:
-        
-        timeout = timeout if timeout is not None else self.default_timeout
-        locator = get_locator(locator, EC.element_to_be_clickable)
-        element = self.wait(locator, timeout)
+
+        timeout, poll_frequency, ignored_exceptions = self._get_wait_params(
+            timeout, poll_frequency, ignored_exceptions
+        )
+        element = self.wait.element_to_be_clickable(
+            locator=locator,
+            timeout=timeout,
+            poll_frequency=poll_frequency,
+            ignored_exceptions=ignored_exceptions
+        )
 
         if clear:
-            self.logger.info(f"Limpando o campo: {describe_element(element)}")
+            self._logger.info(f"Limpando o campo: {describe_element(element)}")
             element.clear()
 
-        self.logger.info(f"Enviando texto {keys} para o elemento: {describe_element(element)}")
+        self._logger.info(f"Enviando texto {keys} para o elemento: {describe_element(element)}")
         element.send_keys(keys)
 
     @on_error
     def execute_script(self, script: str, *args) -> Any:
         """Executa um script JavaScript e retorna o resultado."""
-        self.logger.info(f"Executando script: {script} com argumentos: {args}")
+        self._logger.info(f"Executando script: {script} com argumentos: {args}")
         return self.driver.execute_script(script, *args)
 
     @on_error
     def switch_to_window(self, window_index: int = -1) -> None:
         """Muda o foco para uma janela/aba diferente."""
         all_windows = self.driver.window_handles
-        self.logger.info(f"Alterando para a janela/aba de índice {window_index}. Total de janelas: {len(all_windows)}")
+        self._logger.info(f"Alterando para a janela/aba de índice {window_index}. Total de janelas: {len(all_windows)}")
         try:
             self.driver.switch_to.window(all_windows[window_index])
         except IndexError:
-            self.logger.error(f"Índice da janela {window_index} fora do intervalo. Total de janelas: {len(all_windows)}")
+            self._logger.error(f"Índice da janela {window_index} fora do intervalo. Total de janelas: {len(all_windows)}")
             raise
     
     @on_error
-    def get_text(self, locator: WebElement | tuple[str, str]) -> str:
+    def get_text(
+        self,
+        locator: WebElement | tuple[str, str],
+        timeout: float | None = None,
+        poll_frequency: float | None = None,
+        ignored_exceptions: WaitExcTypes | None = None
+    ) -> str:
         """Retorna o texto de um elemento."""
+        timeout, poll_frequency, ignored_exceptions = self._get_wait_params(
+            timeout, poll_frequency, ignored_exceptions
+        )
         element = self._get_element(locator)
-        self.logger.info(f"Obtendo texto do elemento: {describe_element(element)}")
+        self._logger.info(f"Obtendo texto do elemento: {describe_element(element)}")
         return element.text
     
-    def is_visible(self, locator: tuple[str, str], timeout: float | None = None) -> bool:
+    def is_visible(
+        self,
+        locator: tuple[str, str],
+        timeout: float | None = None,
+        poll_frequency: float | None = None,
+        ignored_exceptions: WaitExcTypes | None = None
+    ) -> bool:
         """Verifica se um elemento está visível na página."""
         
-        timeout = timeout if timeout is not None else self.default_timeout
-        self.logger.info(f"Verificando visibilidade do elemento: {locator}")
+        timeout, poll_frequency, ignored_exceptions = self._get_wait_params(
+            timeout, poll_frequency, ignored_exceptions
+        )
+        self._logger.info(f"Verificando visibilidade do elemento: {locator}")
         try:
-            self.wait(EC.visibility_of_element_located(locator), timeout)
+            self.wait.visibility_of_element_located(
+                locator=locator,
+                timeout=timeout,
+                poll_frequency=poll_frequency,
+                ignored_exceptions=ignored_exceptions
+            )
             return True
         except TimeoutException:
             return False
@@ -231,51 +289,79 @@ class Driver:
     def is_enabled(self, locator: WebElement | tuple[str, str]) -> bool:
         """Verifica se um elemento está habilitado."""
         element = self._get_element(locator)
-        self.logger.info(f"Verificando se o elemento está habilitado: {describe_element(element)}")
+        self._logger.info(f"Verificando se o elemento está habilitado: {describe_element(element)}")
         return element.is_enabled()
     
     def get_title(self) -> str:
         """Retorna o título da página atual."""
-        self.logger.info("Obtendo título da página atual")
+        self._logger.info("Obtendo título da página atual")
         return self.driver.title
 
     def get_current_url(self) -> str:
         """Retorna a URL da página atual."""
-        self.logger.info("Obtendo URL da página atual")
+        self._logger.info("Obtendo URL da página atual")
         return self.driver.current_url
     
     @on_error
     def scroll_to_element(self, locator: WebElement | tuple[str, str]) -> None:
         """Rola a página até que o elemento esteja visível."""
         element = self._get_element(locator)
-        self.logger.info(f"Scrollando a página até o elemento: {describe_element(element)}")
+        self._logger.info(f"Scrollando a página até o elemento: {describe_element(element)}")
         self.execute_script("arguments[0].scrollIntoView(true);", element)
 
     @on_error
     def scroll_to_bottom(self) -> None:
         """Rola a página até o final."""
-        self.logger.info("Scrollando a página até o final")
+        self._logger.info("Scrollando a página até o final")
         self.execute_script("window.scrollTo(0, document.body.scrollHeight);")
 
     @on_error
     def scroll_to_top(self) -> None:
         """Rola a página até o topo."""
-        self.logger.info("Scrollando a página até o topo")
+        self._logger.info("Scrollando a página até o topo")
         self.execute_script("window.scrollTo(0, 0);")
     
     @on_error
-    def select_by_value(self, locator: tuple[str, str], value: str) -> None:
+    def select_by_value(
+        self,
+        locator: tuple[str, str],
+        value: str,
+        timeout: float | None = None,
+        poll_frequency: float | None = None,
+        ignored_exceptions: WaitExcTypes | None = None
+    ) -> None:
         """Seleciona uma opção em um dropdown pelo seu atributo 'value'."""
-        element = self.find_element(*locator)
-        self.logger.info(f"Selecionando opção com value '{value}' no dropdown: {describe_element(element)}")
+        
+        timeout, poll_frequency, ignored_exceptions = self._get_wait_params(
+            timeout, poll_frequency, ignored_exceptions
+        )
+        element = self.find_element(
+            *locator,
+            timeout=timeout,
+            poll_frequency=poll_frequency,
+            ignored_exceptions=ignored_exceptions
+        )
+        self._logger.info(f"Selecionando opção com value '{value}' no dropdown: {describe_element(element)}")
         select = Select(element)
         select.select_by_value(value)
 
     @on_error
-    def select_by_visible_text(self, locator: tuple[str, str], text: str) -> None:
+    def select_by_visible_text(
+        self,
+        locator: tuple[str, str],
+        text: str,
+        timeout: float | None = None,
+        poll_frequency: float | None = None,
+        ignored_exceptions: WaitExcTypes | None = None
+    ) -> None:
         """Seleciona uma opção em um dropdown pelo texto visível."""
-        element = self.find_element(*locator)
-        self.logger.info(f"Selecionando opção com texto visível '{text}' no dropdown: {describe_element(element)}")
+
+        timeout, poll_frequency, ignored_exceptions = self._get_wait_params(
+            timeout, poll_frequency, ignored_exceptions
+        )
+        element = self._get_element(locator)
+
+        self._logger.info(f"Selecionando opção com texto visível '{text}' no dropdown: {describe_element(element)}")
         select = Select(element)
         select.select_by_visible_text(text)
     
@@ -297,9 +383,9 @@ class Driver:
         
         try:
             self.driver.save_screenshot(file_path)
-            self.logger.info(f"Screenshot salvo em: {file_path}")
+            self._logger.info(f"Screenshot salvo em: {file_path}")
         except Exception as e:
-            self.logger.error(f"Falha ao salvar screenshot. Erro:\n{e}")
+            self._logger.error(f"Falha ao salvar screenshot. Erro:\n{e}")
 
     def start_execution(self) -> None:
         self._is_executing = True
@@ -310,14 +396,54 @@ class Driver:
     def is_executing(self) -> bool:
         return self._is_executing
 
-    def _get_element(self, locator: WebElement | tuple[str, str]) -> WebElement:
+    def _get_element(
+        self,
+        locator: WebElement | tuple[str, str],
+        timeout: float | None = None,
+        poll_frequency: float | None = None,
+        ignored_exceptions: WaitExcTypes | None = None
+    ) -> WebElement:
         """Retorna um elemento localizado pelo seletor especificado."""
         if is_web_element(locator):
             return locator
-        return self.find_element(*locator)
+
+        timeout, poll_frequency, ignored_exceptions = self._get_wait_params(
+            timeout, poll_frequency, ignored_exceptions
+        )
+        return self.find_element(
+            *locator,
+            timeout=timeout,
+            poll_frequency=poll_frequency,
+            ignored_exceptions=ignored_exceptions
+        )
 
     def _start_driver(self) -> WebDriver:
-        return self._driver_cls(self.options, self.service, self.keep_alive)
+        return self._driver_cls(self._options, self._service, self._keep_alive)
+    
+    def _get_timeout(self, timeout: float | None) -> float:
+        """Retorna o tempo limite padrão se nenhum for especificado."""
+        return timeout if timeout is not None else self._default_timeout
+    
+    def _get_poll_frequency(self, poll_frequency: float | None) -> float | None:
+        """Retorna a frequência de verificação padrão se nenhuma for especificada."""
+        return poll_frequency if poll_frequency is not None else self._default_poll_frequency
+    
+    def _get_ignored_exceptions(self, ignored_exceptions: WaitExcTypes | None) -> WaitExcTypes | None:
+        """Retorna as exceções ignoradas padrão se nenhuma for especificada."""
+        return ignored_exceptions if ignored_exceptions is not None else self._default_ignored_exceptions
+    
+    def _get_wait_params(
+        self,
+        timeout: float | None,
+        poll_frequency: float | None,
+        ignored_exceptions: WaitExcTypes | None
+    ) -> tuple[float, float | None, WaitExcTypes | None]:
+        """Obtém os parâmetros de espera com valores padrão se não forem especificados."""
+        
+        timeout = self._get_timeout(timeout)
+        poll_frequency = self._get_poll_frequency(poll_frequency)
+        ignored_exceptions = self._get_ignored_exceptions(ignored_exceptions)
+        return timeout, poll_frequency, ignored_exceptions
     
     def __enter__(self) -> Self:
         self.init()

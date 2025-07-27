@@ -23,38 +23,6 @@ def check_locator(locator: WebElement | tuple[str, str]) -> bool:
     raise TypeError(f"O parâmetro 'locator' deve ser do tipo 'WebElement' ou 'tuple', não {type(locator).__name__}")
 
 
-def get_predicate(
-    locator: tuple[str, str] | Callable[..., T_EC],
-    expected_condition: Callable[..., Callable[..., T_EC]] = EC.presence_of_element_located
-) -> Callable[..., T_EC]:
-    """
-    Obtém a função de condição esperada a partir do localizador.
-    
-    Args:
-        locator: Um tupla contendo o método de localização e o valor, ou uma função de condição esperada.
-    
-    Returns:
-        Uma função de condição esperada.
-    """
-    
-    if callable(locator):
-        return locator
-    if is_by_tuple(locator):
-        return expected_condition(locator)
-
-    raise TypeError(f"O parâmetro 'locator' deve ser do tipo 'tuple' ou 'Callable', não {type(locator).__name__}")
-
-
-def get_locator(
-    locator: WebElement | tuple[str, str] | Callable[..., T_EC],
-    expected_condition: Callable[..., Callable[..., T_EC]]
-) -> Callable[..., T_EC]:
-
-    if not callable(locator):
-        return expected_condition(locator)
-    return locator
-
-
 def describe_element(element: WebElement) -> str:
     """Cria uma descrição legível para um WebElement, parecida com uma tag HTML."""
     if not is_web_element(element):
@@ -78,10 +46,3 @@ def describe_element(element: WebElement) -> str:
     except Exception:
         # Fallback caso o elemento se torne "stale" durante a descrição
         return "<WebElement (expirado ou inacessível)>"
-
-
-def describe_predicate(predicate: Callable[..., T_EC]) -> str:
-    """Retorna o nome da função de condição esperada."""
-    start = 10
-    end = str(predicate).index('.')
-    return str(predicate)[start:end]

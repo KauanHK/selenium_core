@@ -20,8 +20,6 @@ class _ExecutionContext:
         if exc_value is None:
             return
         
-        self.driver.logger.error(f"Erro ao executar {self.func.__name__}: {exc_value}")
-
         if self.driver._save_screenshot_on_error:
             self.driver.save_screenshot(self.func.__name__)
 
