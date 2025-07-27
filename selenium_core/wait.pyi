@@ -1,7 +1,7 @@
 from selenium.webdriver.remote.webdriver import WebDriver
 from selenium.webdriver.remote.webelement import WebElement
 from selenium.types import WaitExcTypes
-from typing import Literal
+from typing import Literal, Self
 
 
 class Wait:
@@ -13,6 +13,9 @@ class Wait:
         default_poll_frequency: float | None = None,
         default_ignored_exceptions: WaitExcTypes | None = None
     ) -> None: ...
+
+    @property
+    def Not(self) -> Self: ...
 
     def presence_of_element_located(
         self,

@@ -2,7 +2,7 @@ from selenium.webdriver.remote.webdriver import WebDriver
 from selenium.webdriver.support.wait import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.types import WaitExcTypes
-from typing import Callable, TypeVar
+from typing import Callable, TypeVar, Self
 
 
 T = TypeVar('T')
@@ -21,6 +21,12 @@ class Wait:
         self._default_timeout = default_timeout
         self._default_poll_frequency = default_poll_frequency
         self._default_ignored_exceptions = default_ignored_exceptions
+        self._negated = False
+    
+    @property
+    def Not(self) -> Self:
+        self._negated = True
+        return self
     
     def until(
         self,
@@ -30,10 +36,16 @@ class Wait:
         ignored_exceptions: WaitExcTypes | None = None
     ) -> T:
         """Aguarda até que a condição especificada seja atendida."""
+        
         timeout, poll_frequency, ignored_exceptions = self._get_wait_params(
             timeout, poll_frequency, ignored_exceptions
         )
-        return WebDriverWait(self._driver, timeout, poll_frequency, ignored_exceptions).until(condition)
+        
+        wait = WebDriverWait(self._driver, timeout, poll_frequency, ignored_exceptions)
+        if self._negated:
+            self._negated = False
+            return wait.until_not(condition)
+        return wait.until(condition)
 
     def _get_timeout(self, timeout: float | None) -> float:
         """Retorna o tempo limite padrão se nenhum for especificado."""
@@ -68,18 +80,18 @@ class Wait:
 
         def wait_wrapper(*args, **kwargs) -> any:
             
-            timeout, poll_frequency, ignored_exceptions = self._get_wait_params(
-                kwargs.pop('timeout', None),
-                kwargs.pop('poll_frequency', None),
-                kwargs.pop('ignored_exceptions', None)
-            )
-
             # O nome do primeiro parâmetro varia de acordo com a condição ('locator', 'mark', 'element')
             # Por isso, passamos como primeiro argumento
             if 'locator' in kwargs:
                 locator = kwargs.pop('locator')
             else:
                 locator, *args = args[:]
-            return WebDriverWait(self._driver, timeout, poll_frequency, ignored_exceptions).until(condition(locator, *args, **kwargs))
+            
+            timeout = kwargs.pop('timeout', None)
+            poll_frequency = kwargs.pop('poll_frequency', None)
+            ignored_exceptions = kwargs.pop('ignored_exceptions', None)
+
+            predicate = condition(locator, *args, **kwargs)
+            return self.until(predicate, timeout, poll_frequency, ignored_exceptions)
 
         return wait_wrapper
