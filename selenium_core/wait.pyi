@@ -150,10 +150,12 @@ class Wait:
         poll_frequency: float | None = None,
         ignored_exceptions: WaitExcTypes | None = None
     ) -> bool: ...
-        
+    
     def text_to_be_present_in_element_attribute(
         self,
-        locator: tuple[str, str], attribute_: str, text_: str,
+        locator: tuple[str, str],
+        attribute_: str,
+        text_: str,
         *,
         timeout: float | None = None,
         poll_frequency: float | None = None,
@@ -162,7 +164,9 @@ class Wait:
 
     def attribute_to_be(
         self,
-        locator: tuple[str, str], attribute_: str, value_: str,
+        locator: tuple[str, str],
+        attribute_: str,
+        value_: str,
         *,
         timeout: float | None = None,
         poll_frequency: float | None = None,
@@ -171,7 +175,9 @@ class Wait:
 
     def attribute_contains(
         self,
-        locator: tuple[str, str], attribute_: str, value_: str,
+        locator: tuple[str, str],
+        attribute_: str,
+        value_: str,
         *,
         timeout: float | None = None,
         poll_frequency: float | None = None,
