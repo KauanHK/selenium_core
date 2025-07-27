@@ -12,8 +12,8 @@ class Wait:
     def __init__(
         self,
         driver: WebDriver,
-        default_timeout: float,
-        default_poll_frequency: float | None = None,
+        default_timeout: float = 30,
+        default_poll_frequency: float = 0.5,
         default_ignored_exceptions: WaitExcTypes | None = None
     ) -> None:
         

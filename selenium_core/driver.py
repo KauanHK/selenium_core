@@ -27,7 +27,7 @@ class Driver:
         driver_cls: type[WebDriver] = Chrome,
         save_screenshot_on_error: bool = True,
         default_timeout: float = 30,
-        default_poll_frequency: float | None = None,
+        default_poll_frequency: float = 0.5,
         default_ignored_exceptions: WaitExcTypes | None = None,
         logger: logging.Logger | None = None
     ) -> None:
