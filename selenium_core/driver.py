@@ -35,7 +35,15 @@ class Driver:
         Gerenciador de driver do Selenium.
 
         Args:
-            options: Opções do Driver.
+            options: Opções Selenium do Driver.
+            service: Serviço Selenium do Driver.
+            keep_alive: Se deve manter o driver ativo.
+            driver_cls: Classe do driver a ser usada.
+            save_screenshot_on_error: Se deve salvar screenshot em caso de erro.
+            default_timeout: Tempo padrão de espera para condições.
+            default_poll_frequency: Frequência padrão de polling para condições.
+            default_ignored_exceptions: Exceções a serem ignoradas durante as esperas.
+            logger: Logger para registrar eventos. Se não for passado um, criará um logger padrão.
         """
         
         self._options = options
@@ -74,11 +82,13 @@ class Driver:
         return self._driver is not None
     
     def init(self) -> None:
+        """Inicializa o driver. Caso já esteja inicializado, reinicia."""
         self._logger.info("Iniciando driver")
         self.quit()
         self._driver = self._start_driver()
     
     def quit(self) -> None:
+        """Fecha o driver e libera os recursos. Caso não esteja inicializado, não faz nada."""
         
         if self._driver is None:
             return
@@ -89,6 +99,7 @@ class Driver:
 
     @on_error
     def get(self, url: str) -> None:
+        """Navega para a URL especificada."""
         self._logger.info(f"Acessando URL: {url}")
         self.driver.get(url)
 
@@ -101,11 +112,15 @@ class Driver:
         poll_frequency: float | None = None,
         ignored_exceptions: WaitExcTypes | None = None
     ) -> WebElement:
-        """ Encontra um único elemento na página.
+        """
+        Encontra um único elemento na página.
         
         Args:
-            by: O método de localização (ex: 'id', 'xpath', etc).
+            by: O método de localização.
             value: O valor do seletor.
+            timeout: Tempo máximo para aguardar o elemento.
+            poll_frequency: Frequência de polling para verificar a presença do elemento.
+            ignored_exceptions: Exceções a serem ignoradas durante a espera.
         """
         self._logger.info(f'Procurando elemento ({by}="{value}")')
         return self.wait.presence_of_element_located(
@@ -128,13 +143,11 @@ class Driver:
         Encontra múltiplos elementos na página.
         
         Args:
-            by: O método de localização (ex: 'id', 'xpath', etc).
+            by: O método de localização.
             value: O valor do seletor.
-            expected_condition: Uma função que retorna uma condição esperada.
             timeout: Tempo máximo para aguardar os elementos.
-        
-        Returns:
-            Uma lista de WebElements encontrados.
+            poll_frequency: Frequência de polling para verificar a presença dos elementos.
+            ignored_exceptions: Exceções a serem ignoradas durante a espera.
         """
         self._logger.info(f"Procurando elementos por {by}='{value}'")
         return self.wait.presence_of_all_elements_located(
@@ -152,6 +165,15 @@ class Driver:
         poll_frequency: float | None = None,
         ignored_exceptions: WaitExcTypes | None = None
     ) -> None:
+        """
+        Clica no elemento especificado.
+
+        Args:
+            locator: O WebElement ou tupla (by, value) do seletor.
+            timeout: Tempo máximo para aguardar o elemento ser clicável.
+            poll_frequency: Frequência de polling para verificar se o elemento está clicável.
+            ignored_exceptions: Exceções a serem ignoradas durante a espera.
+        """
         
         self._logger.info(f"Aguardando o elemento ser clicável: {describe_element(locator)}")
         element = self.wait.element_to_be_clickable(
@@ -172,7 +194,15 @@ class Driver:
         poll_frequency: float | None = None,
         ignored_exceptions: WaitExcTypes | None = None
     ) -> None:
-        """Move o mouse para cima do elemento especificado."""
+        """
+        Move o mouse para cima do elemento especificado.
+        
+        Args:
+            locator: O WebElement ou tupla (by, value) do seletor.
+            timeout: Tempo máximo para aguardar o elemento ser clicável.
+            poll_frequency: Frequência de polling para verificar se o elemento está clicável.
+            ignored_exceptions: Exceções a serem ignoradas durante a espera.
+        """
 
         self._logger.info(f"Aguardando o elemento ser clicável para hover: {describe_element(locator)}")
         element = self.wait.element_to_be_clickable(
@@ -197,6 +227,17 @@ class Driver:
         poll_frequency: float | None = None,
         ignored_exceptions: WaitExcTypes | None = None
     ) -> None:
+        """
+        Envia teclas para o elemento especificado.
+
+        Args:
+            locator: O WebElement ou tupla (by, value) do seletor.
+            keys: As teclas a serem enviadas.
+            clear: Se deve limpar o campo antes de enviar as teclas.
+            timeout: Tempo máximo para aguardar o elemento ser clicável.
+            poll_frequency: Frequência de polling para verificar se o elemento está clicável.
+            ignored_exceptions: Exceções a serem ignoradas durante a espera.
+        """
 
         element = self.wait.element_to_be_clickable(
             locator=locator,
@@ -214,7 +255,13 @@ class Driver:
 
     @on_error
     def execute_script(self, script: str, *args) -> Any:
-        """Executa um script JavaScript e retorna o resultado."""
+        """
+        Executa um script JavaScript e retorna o resultado.
+        
+        Args:
+            script: O código JavaScript a ser executado.
+            *args: Argumentos adicionais a serem passados para o script.
+        """
         self._logger.info(f"Executando script: {script} com argumentos: {args}")
         return self.driver.execute_script(script, *args)
 
@@ -237,7 +284,15 @@ class Driver:
         poll_frequency: float | None = None,
         ignored_exceptions: WaitExcTypes | None = None
     ) -> str:
-        """Retorna o texto de um elemento."""
+        """
+        Retorna o texto de um elemento.
+        
+        Args:
+            locator: O WebElement ou tupla (by, value) do seletor.
+            timeout: Tempo máximo para aguardar o elemento estar presente.
+            poll_frequency: Frequência de polling para verificar a presença do elemento.
+            ignored_exceptions: Exceções a serem ignoradas durante a espera.
+        """
         
         element = self._get_element(
             locator=locator,
@@ -255,9 +310,17 @@ class Driver:
         poll_frequency: float | None = None,
         ignored_exceptions: WaitExcTypes | None = None
     ) -> bool:
-        """Verifica se um elemento está visível na página."""
+        """
+        Verifica se um elemento está visível na página.
         
-        element =  self._get_element(
+        Args:
+            locator: O WebElement ou tupla (by, value) do seletor.
+            timeout: Tempo máximo para aguardar o elemento estar presente.
+            poll_frequency: Frequência de polling para verificar a presença do elemento.
+            ignored_exceptions: Exceções a serem ignoradas durante a espera.
+        """
+
+        element = self._get_element(
             locator=locator,
             timeout=timeout,
             poll_frequency=poll_frequency,
@@ -274,7 +337,15 @@ class Driver:
         poll_frequency: float | None = None,
         ignored_exceptions: WaitExcTypes | None = None
     ) -> bool:
-        """Verifica se um elemento está habilitado."""
+        """
+        Verifica se um elemento está habilitado.
+
+        Args:
+            locator: O WebElement ou tupla (by, value) do seletor.
+            timeout: Tempo máximo para aguardar o elemento estar presente.
+            poll_frequency: Frequência de polling para verificar a presença do elemento.
+            ignored_exceptions: Exceções a serem ignoradas durante a espera.
+        """
     
         element = self._get_element(
             locator=locator,
@@ -304,7 +375,15 @@ class Driver:
         poll_frequency: float | None = None,
         ignored_exceptions: WaitExcTypes | None = None
     ) -> None:
-        """Rola a página até que o elemento esteja visível."""
+        """
+        Rola a página até que o elemento esteja visível.
+        
+        Args:
+            locator: O WebElement ou tupla (by, value) do seletor.
+            timeout: Tempo máximo para aguardar o elemento estar presente.
+            poll_frequency: Frequência de polling para verificar a presença do elemento.
+            ignored_exceptions: Exceções a serem ignoradas durante a espera.
+        """
 
         element = self._get_element(
             locator=locator,
@@ -337,8 +416,17 @@ class Driver:
         poll_frequency: float | None = None,
         ignored_exceptions: WaitExcTypes | None = None
     ) -> None:
-        """Seleciona uma opção em um dropdown pelo seu atributo 'value'."""
-        
+        """
+        Seleciona uma opção em um dropdown pelo seu atributo 'value'.
+
+        Args:
+            locator: O WebElement ou tupla (by, value) do seletor.
+            value: O valor da opção a ser selecionada.
+            timeout: Tempo máximo para aguardar o elemento estar presente.
+            poll_frequency: Frequência de polling para verificar a presença do elemento.
+            ignored_exceptions: Exceções a serem ignoradas durante a espera.
+        """
+
         element = self._get_element(
             locator=locator,
             timeout=timeout,
@@ -359,7 +447,16 @@ class Driver:
         poll_frequency: float | None = None,
         ignored_exceptions: WaitExcTypes | None = None
     ) -> None:
-        """Seleciona uma opção em um dropdown pelo texto visível."""
+        """
+        Seleciona uma opção em um dropdown pelo texto visível.
+
+        Args:
+            locator: O WebElement ou tupla (by, value) do seletor.
+            text: O texto visível da opção a ser selecionada.
+            timeout: Tempo máximo para aguardar o elemento estar presente.
+            poll_frequency: Frequência de polling para verificar a presença do elemento.
+            ignored_exceptions: Exceções a serem ignoradas durante a espera.
+        """
 
         element = self._get_element(
             locator=locator,
@@ -395,12 +492,17 @@ class Driver:
             self._logger.error(f"Falha ao salvar screenshot. Erro:\n{e}")
 
     def start_execution(self) -> None:
+        """Inicia o contexto de execução do driver. É usado internamente para gerenciar
+          o estado de execução e evitar gerar screenshots repetidas."""
         self._is_executing = True
     
     def stop_execution(self) -> None:
+        """Para o contexto de execução do driver. É usado internamente para gerenciar
+          o estado de execução e evitar gerar screenshots repetidas."""
         self._is_executing = False
     
     def is_executing(self) -> bool:
+        """Verifica se o driver está executando algo."""
         return self._is_executing
 
     def _get_element(
@@ -410,7 +512,16 @@ class Driver:
         poll_frequency: float | None = None,
         ignored_exceptions: WaitExcTypes | None = None
     ) -> WebElement:
-        """Retorna um elemento localizado pelo seletor especificado."""
+        """
+        Retorna o WebElement desejado. Caso 'locator' seja um WebElement, retorna ele diretamente.
+        Se for uma tupla, procura o elemento na página.
+        
+        Args:
+            locator: O WebElement ou tupla (by, value).
+            timeout: Tempo máximo para aguardar o elemento estar presente.
+            poll_frequency: Frequência de polling para verificar a presença do elemento.
+            ignored_exceptions: Exceções a serem ignoradas durante a espera.
+        """
 
         if is_web_element(locator):
             return locator
@@ -423,6 +534,7 @@ class Driver:
         )
 
     def _start_driver(self) -> WebDriver:
+        """Inicia o driver Selenium com as configurações fornecidas."""
         return self._driver_cls(self._options, self._service, self._keep_alive)
     
     def __enter__(self) -> Self:
