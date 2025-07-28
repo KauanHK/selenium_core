@@ -1,6 +1,4 @@
-from typing import Callable, TypeVar
+from typing import TypeVar
 
 
 T_EC = TypeVar('T_EC')
-ExpectedConditionPredicate = Callable[..., T_EC]
-ExpectedCondition = Callable[..., ExpectedConditionPredicate]

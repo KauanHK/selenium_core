@@ -248,7 +248,7 @@ class Driver:
         self._logger.info(f"Obtendo texto do elemento: {describe_element(element)}")
         return element.text
     
-    def is_visible(
+    def is_displayed(
         self,
         locator: WebElement | tuple[str, str],
         timeout: float | None = None,

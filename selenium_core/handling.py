@@ -27,7 +27,7 @@ class _ExecutionContext:
 P = ParamSpec('P')
 T = TypeVar('T')
 
-def on_error(func: Callable[..., T]) -> Callable[..., T]:
+def on_error(func: Callable[P, T]) -> Callable[P, T]:
 
     @wraps(func)
     def wrapper(driver: 'Driver', *args: P.args, **kwargs: P.kwargs) -> T:
