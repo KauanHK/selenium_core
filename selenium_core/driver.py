@@ -13,7 +13,7 @@ from typing import Self, Any
 from .wait import Wait
 from .handling import on_error
 from .config import Config
-from .log import get_logger
+from .log import LogManager
 from .utils import is_web_element, describe_element
 
 
@@ -29,7 +29,10 @@ class Driver:
         default_timeout: float = 30,
         default_poll_frequency: float = 0.5,
         default_ignored_exceptions: WaitExcTypes | None = None,
-        logger: logging.Logger | None = None
+        logger: logging.Logger | None = None,
+        log_level: int | None = None,
+        log_file_path: str | None = None,
+        log_indent: int | None = None
     ) -> None:
         """
         Gerenciador de driver do Selenium.
@@ -54,7 +57,12 @@ class Driver:
         self._default_timeout = default_timeout
         self._default_poll_frequency = default_poll_frequency
         self._default_ignored_exceptions = default_ignored_exceptions
-        self._logger = logger if logger is not None else get_logger()
+        self._logger = LogManager(
+            logger=logger,
+            log_level=log_level,
+            file_path=log_file_path,
+            indent=log_indent
+        )
 
         self._driver = None
         self._wait = None
@@ -490,6 +498,16 @@ class Driver:
             self._logger.info(f"Screenshot salvo em: {file_path}")
         except Exception as e:
             self._logger.error(f"Falha ao salvar screenshot. Erro:\n{e}")
+    
+    def log_step(self, description: str, level: int = logging.INFO) -> None:
+        """
+        Registra um passo no log com indentação e tempo de execução.
+        
+        Args:
+            description: Descrição do passo a ser registrado.
+            level: Nível de log (ex: logging.INFO, logging.DEBUG).
+        """
+        return self._logger.step(description, level)
 
     def start_execution(self) -> None:
         """Inicia o contexto de execução do driver. É usado internamente para gerenciar

@@ -1,21 +1,71 @@
 import logging
 import os
 from datetime import datetime
+import time
+from typing import Callable
 from .config import Config
 
 
-class _Logger:
-    _instance = None
+class LogManager:
 
-    @classmethod
-    def get_logger(cls, log_level: int | None = None, file_path: str | None = None) -> logging.Logger:
-        if cls._instance is not None:
-            return cls._instance
+    def __init__(
+        self,
+        logger: logging.Logger | None = None,
+        log_level: int | None = None,
+        file_path: str | None = None,
+        indent: int | None = None
+    ) -> None:
 
+        self._logger = logger if logger is not None else self._create_logger(log_level, file_path)
+        self._current_indent_level = 0
+        self._indent = indent if indent is not None else 3
+    
+    def info(self, message: str) -> None:
+        self._log(logging.INFO, message)
+
+    def debug(self, message: str) -> None:
+        self._log(logging.DEBUG, message)
+        
+    def error(self, message: str) -> None:
+        self._log(logging.ERROR, message)
+
+    def step(self, description: str, level: int = logging.INFO) -> Callable:
+        
+        def decorator(func: Callable) -> Callable:
+
+            def wrapper(*args, **kwargs):
+
+                self._log(level, f">> {description}")
+                self._current_indent_level += 1
+                start_time = time.perf_counter()
+                try:
+                    result = func(*args, **kwargs)
+                except Exception as e:
+                    self._log(logging.ERROR, f"<<{description} falhou: {e}")
+                    raise
+                finally:
+                    self._current_indent_level -= 1
+
+                duration = time.perf_counter() - start_time
+                self._log(level, f"<< {description} finalizado com sucesso em {duration:.3f} segundos")
+                return result
+            
+            return wrapper
+        
+        return decorator
+
+    def _log(self, level: int, message: str, indent: int | None = None) -> None:
+        """Método interno que adiciona indentação antes de logar."""
+        indent = indent if indent is not None else self._indent
+        indent = " " * self._current_indent_level * indent
+        self._logger.log(level, f"{indent}{message}")
+
+    def _create_logger(self, log_level: int | None = None, file_path: str | None = None) -> logging.Logger:
+        
         # Criação do logger
         log_level = log_level if log_level is not None else Config.LOG_LEVEL
-        cls._instance = logging.getLogger(__name__)
-        cls._instance.setLevel(log_level)
+        logger = logging.getLogger(__name__)
+        logger.setLevel(log_level)
 
         # Formatação padrão
         formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
@@ -35,12 +85,7 @@ class _Logger:
         console_handler.setFormatter(formatter)
 
         # Adicionando os handlers ao logger
-        cls._instance.addHandler(file_handler)
-        cls._instance.addHandler(console_handler)
+        logger.addHandler(file_handler)
+        logger.addHandler(console_handler)
 
-        return cls._instance
-
-
-
-def get_logger(log_level: int | None = None, file_path: str | None = None) -> logging.Logger:
-    return _Logger.get_logger(log_level, file_path)
+        return logger
