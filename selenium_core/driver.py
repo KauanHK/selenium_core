@@ -57,7 +57,7 @@ class Driver:
         self._default_timeout = default_timeout
         self._default_poll_frequency = default_poll_frequency
         self._default_ignored_exceptions = default_ignored_exceptions
-        self._logger = LogManager(
+        self.log = LogManager(
             logger=logger,
             log_level=log_level,
             file_path=log_file_path,
@@ -91,7 +91,7 @@ class Driver:
     
     def init(self) -> None:
         """Inicializa o driver. Caso já esteja inicializado, reinicia."""
-        self._logger.info("Iniciando driver")
+        self.log.info("Iniciando driver")
         self.quit()
         self._driver = self._start_driver()
     
@@ -101,14 +101,14 @@ class Driver:
         if self._driver is None:
             return
         
-        self._logger.info("Fechando driver")
+        self.log.info("Fechando driver")
         self._driver.quit()
         self._driver = None
 
     @on_error
     def get(self, url: str) -> None:
         """Navega para a URL especificada."""
-        self._logger.info(f"Acessando URL: {url}")
+        self.log.info(f"Acessando URL: {url}")
         self.driver.get(url)
 
     @on_error
@@ -130,7 +130,7 @@ class Driver:
             poll_frequency: Frequência de polling para verificar a presença do elemento.
             ignored_exceptions: Exceções a serem ignoradas durante a espera.
         """
-        self._logger.info(f'Procurando elemento ({by}="{value}")')
+        self.log.info(f'Procurando elemento ({by}="{value}")')
         return self.wait.presence_of_element_located(
             locator=(by, value),
             timeout=timeout,
@@ -157,7 +157,7 @@ class Driver:
             poll_frequency: Frequência de polling para verificar a presença dos elementos.
             ignored_exceptions: Exceções a serem ignoradas durante a espera.
         """
-        self._logger.info(f"Procurando elementos por {by}='{value}'")
+        self.log.info(f"Procurando elementos por {by}='{value}'")
         return self.wait.presence_of_all_elements_located(
             locator=(by, value),
             timeout=timeout,
@@ -183,7 +183,7 @@ class Driver:
             ignored_exceptions: Exceções a serem ignoradas durante a espera.
         """
         
-        self._logger.info(f"Aguardando o elemento ser clicável: {describe_element(locator)}")
+        self.log.info(f"Aguardando o elemento ser clicável: {describe_element(locator)}")
         element = self.wait.element_to_be_clickable(
             locator=locator,
             timeout=timeout,
@@ -191,7 +191,7 @@ class Driver:
             ignored_exceptions=ignored_exceptions
         )
 
-        self._logger.info(f'Clicando no elemento {describe_element(element)}')
+        self.log.info(f'Clicando no elemento {describe_element(element)}')
         element.click()
 
     @on_error
@@ -212,7 +212,7 @@ class Driver:
             ignored_exceptions: Exceções a serem ignoradas durante a espera.
         """
 
-        self._logger.info(f"Aguardando o elemento ser clicável para hover: {describe_element(locator)}")
+        self.log.info(f"Aguardando o elemento ser clicável para hover: {describe_element(locator)}")
         element = self.wait.element_to_be_clickable(
             locator=locator,
             timeout=timeout,
@@ -220,7 +220,7 @@ class Driver:
             ignored_exceptions=ignored_exceptions
         )
 
-        self._logger.info(f"Movendo o mouse para o elemento: {describe_element(element)}")
+        self.log.info(f"Movendo o mouse para o elemento: {describe_element(element)}")
         actions = ActionChains(self.driver)
         actions.move_to_element(element)
         actions.perform()
@@ -255,10 +255,10 @@ class Driver:
         )
 
         if clear:
-            self._logger.info(f"Limpando o campo: {describe_element(element)}")
+            self.log.info(f"Limpando o campo: {describe_element(element)}")
             element.clear()
 
-        self._logger.info(f"Enviando texto {keys} para o elemento: {describe_element(element)}")
+        self.log.info(f"Enviando texto {keys} para o elemento: {describe_element(element)}")
         element.send_keys(keys)
 
     @on_error
@@ -270,18 +270,18 @@ class Driver:
             script: O código JavaScript a ser executado.
             *args: Argumentos adicionais a serem passados para o script.
         """
-        self._logger.info(f"Executando script: {script} com argumentos: {args}")
+        self.log.info(f"Executando script: {script} com argumentos: {args}")
         return self.driver.execute_script(script, *args)
 
     @on_error
     def switch_to_window(self, window_index: int = -1) -> None:
         """Muda o foco para uma janela/aba diferente."""
         all_windows = self.driver.window_handles
-        self._logger.info(f"Alterando para a janela/aba de índice {window_index}. Total de janelas: {len(all_windows)}")
+        self.log.info(f"Alterando para a janela/aba de índice {window_index}. Total de janelas: {len(all_windows)}")
         try:
             self.driver.switch_to.window(all_windows[window_index])
         except IndexError:
-            self._logger.error(f"Índice da janela {window_index} fora do intervalo. Total de janelas: {len(all_windows)}")
+            self.log.error(f"Índice da janela {window_index} fora do intervalo. Total de janelas: {len(all_windows)}")
             raise
     
     @on_error
@@ -308,7 +308,7 @@ class Driver:
             poll_frequency=poll_frequency,
             ignored_exceptions=ignored_exceptions
         )
-        self._logger.info(f"Obtendo texto do elemento: {describe_element(element)}")
+        self.log.info(f"Obtendo texto do elemento: {describe_element(element)}")
         return element.text
     
     def is_displayed(
@@ -335,7 +335,7 @@ class Driver:
             ignored_exceptions=ignored_exceptions
         )
         
-        self._logger.info(f"Verificando visibilidade do elemento: {locator}")
+        self.log.info(f"Verificando visibilidade do elemento: {locator}")
         return element.is_displayed()
 
     def is_enabled(
@@ -362,17 +362,17 @@ class Driver:
             ignored_exceptions=ignored_exceptions
         )
 
-        self._logger.info(f"Verificando se o elemento está habilitado: {describe_element(element)}")
+        self.log.info(f"Verificando se o elemento está habilitado: {describe_element(element)}")
         return element.is_enabled()
 
     def get_title(self) -> str:
         """Retorna o título da página atual."""
-        self._logger.info("Obtendo título da página atual")
+        self.log.info("Obtendo título da página atual")
         return self.driver.title
 
     def get_current_url(self) -> str:
         """Retorna a URL da página atual."""
-        self._logger.info("Obtendo URL da página atual")
+        self.log.info("Obtendo URL da página atual")
         return self.driver.current_url
     
     @on_error
@@ -400,19 +400,19 @@ class Driver:
             ignored_exceptions=ignored_exceptions
         )
 
-        self._logger.info(f"Scrollando a página até o elemento: {describe_element(element)}")
+        self.log.info(f"Scrollando a página até o elemento: {describe_element(element)}")
         self.execute_script("arguments[0].scrollIntoView(true);", element)
 
     @on_error
     def scroll_to_bottom(self) -> None:
         """Rola a página até o final."""
-        self._logger.info("Scrollando a página até o final")
+        self.log.info("Scrollando a página até o final")
         self.execute_script("window.scrollTo(0, document.body.scrollHeight);")
 
     @on_error
     def scroll_to_top(self) -> None:
         """Rola a página até o topo."""
-        self._logger.info("Scrollando a página até o topo")
+        self.log.info("Scrollando a página até o topo")
         self.execute_script("window.scrollTo(0, 0);")
     
     @on_error
@@ -442,7 +442,7 @@ class Driver:
             ignored_exceptions=ignored_exceptions
         )
 
-        self._logger.info(f"Selecionando opção com value '{value}' no dropdown: {describe_element(element)}")
+        self.log.info(f"Selecionando opção com value '{value}' no dropdown: {describe_element(element)}")
         select = Select(element)
         select.select_by_value(value)
 
@@ -473,7 +473,7 @@ class Driver:
             ignored_exceptions=ignored_exceptions
         )
 
-        self._logger.info(f"Selecionando opção com texto visível '{text}' no dropdown: {describe_element(element)}")
+        self.log.info(f"Selecionando opção com texto visível '{text}' no dropdown: {describe_element(element)}")
         select = Select(element)
         select.select_by_visible_text(text)
     
@@ -495,19 +495,9 @@ class Driver:
         
         try:
             self.driver.save_screenshot(file_path)
-            self._logger.info(f"Screenshot salvo em: {file_path}")
+            self.log.info(f"Screenshot salvo em: {file_path}")
         except Exception as e:
-            self._logger.error(f"Falha ao salvar screenshot. Erro:\n{e}")
-    
-    def log_step(self, description: str, level: int = logging.INFO) -> None:
-        """
-        Registra um passo no log com indentação e tempo de execução.
-        
-        Args:
-            description: Descrição do passo a ser registrado.
-            level: Nível de log (ex: logging.INFO, logging.DEBUG).
-        """
-        return self._logger.step(description, level)
+            self.log.error(f"Falha ao salvar screenshot. Erro:\n{e}")
 
     def start_execution(self) -> None:
         """Inicia o contexto de execução do driver. É usado internamente para gerenciar
