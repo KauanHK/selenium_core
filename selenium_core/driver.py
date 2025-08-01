@@ -11,11 +11,29 @@ from datetime import datetime
 import os
 from typing import Self, Any
 from .wait import Wait
-from .handling import on_error
+from .handling import Controller
 from .config import Config
 from .log import LogManager
 from .utils import is_web_element, describe_element
 
+
+def save_screenshot(driver: 'Driver', exception: Exception | None = None) -> None:
+    """
+    Salva um screenshot do driver com um nome de arquivo dinâmico e informativo.
+    
+    Args:
+        context_name: Um nome para o contexto (ex: o nome da função que falhou).
+    """
+    timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    file_name = f"{timestamp}_{exception.__class__.__name__}.png"
+
+    file_path = os.path.join(Config.SCREENSHOT_DIR, file_name)
+    os.makedirs(os.path.dirname(file_path), exist_ok=True)
+    
+    driver.save_screenshot(file_path)
+
+
+controller = Controller(exception_handler=save_screenshot)
 
 class Driver:
 
@@ -105,13 +123,13 @@ class Driver:
         self._driver.quit()
         self._driver = None
 
-    @on_error
+    @controller.on_error
     def get(self, url: str) -> None:
         """Navega para a URL especificada."""
         self.log.info(f"Acessando URL: {url}")
         self.driver.get(url)
 
-    @on_error
+    @controller.on_error
     def find_element(
         self,
         by: str,
@@ -138,7 +156,7 @@ class Driver:
             ignored_exceptions=ignored_exceptions
         )
 
-    @on_error
+    @controller.on_error
     def find_elements(
         self,
         by: str,
@@ -165,7 +183,7 @@ class Driver:
             ignored_exceptions=ignored_exceptions
         )
 
-    @on_error
+    @controller.on_error
     def click(
         self,
         locator: WebElement | tuple[str, str],
@@ -194,7 +212,7 @@ class Driver:
         self.log.info(f'Clicando no elemento {describe_element(element)}')
         element.click()
 
-    @on_error
+    @controller.on_error
     def hover(
         self,
         locator: WebElement | tuple[str, str],
@@ -225,7 +243,7 @@ class Driver:
         actions.move_to_element(element)
         actions.perform()
     
-    @on_error
+    @controller.on_error
     def send_keys(
         self,
         locator: WebElement | tuple[str, str],
@@ -261,7 +279,7 @@ class Driver:
         self.log.info(f"Enviando texto {keys} para o elemento: {describe_element(element)}")
         element.send_keys(keys)
 
-    @on_error
+    @controller.on_error
     def execute_script(self, script: str, *args) -> Any:
         """
         Executa um script JavaScript e retorna o resultado.
@@ -273,7 +291,7 @@ class Driver:
         self.log.info(f"Executando script: {script} com argumentos: {args}")
         return self.driver.execute_script(script, *args)
 
-    @on_error
+    @controller.on_error
     def switch_to_window(self, window_index: int = -1) -> None:
         """Muda o foco para uma janela/aba diferente."""
         all_windows = self.driver.window_handles
@@ -284,7 +302,7 @@ class Driver:
             self.log.error(f"Índice da janela {window_index} fora do intervalo. Total de janelas: {len(all_windows)}")
             raise
     
-    @on_error
+    @controller.on_error
     def get_text(
         self,
         locator: WebElement | tuple[str, str],
@@ -375,7 +393,7 @@ class Driver:
         self.log.info("Obtendo URL da página atual")
         return self.driver.current_url
     
-    @on_error
+    @controller.on_error
     def scroll_to_element(
         self,
         locator: WebElement | tuple[str, str],
@@ -403,19 +421,19 @@ class Driver:
         self.log.info(f"Scrollando a página até o elemento: {describe_element(element)}")
         self.execute_script("arguments[0].scrollIntoView(true);", element)
 
-    @on_error
+    @controller.on_error
     def scroll_to_bottom(self) -> None:
         """Rola a página até o final."""
         self.log.info("Scrollando a página até o final")
         self.execute_script("window.scrollTo(0, document.body.scrollHeight);")
 
-    @on_error
+    @controller.on_error
     def scroll_to_top(self) -> None:
         """Rola a página até o topo."""
         self.log.info("Scrollando a página até o topo")
         self.execute_script("window.scrollTo(0, 0);")
     
-    @on_error
+    @controller.on_error
     def select_by_value(
         self,
         locator: WebElement | tuple[str, str],
@@ -446,7 +464,7 @@ class Driver:
         select = Select(element)
         select.select_by_value(value)
 
-    @on_error
+    @controller.on_error
     def select_by_visible_text(
         self,
         locator: tuple[str, str],
@@ -477,20 +495,17 @@ class Driver:
         select = Select(element)
         select.select_by_visible_text(text)
     
-    def save_screenshot(self, context_name: str | None = None) -> None:
+    def save_screenshot(self, file_path: str | None = None) -> None:
         """
         Salva um screenshot do driver com um nome de arquivo dinâmico e informativo.
         
         Args:
             context_name: Um nome para o contexto (ex: o nome da função que falhou).
         """
-        timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-        if context_name is not None:
-            file_name = f"{timestamp}_{context_name}.png"
-        else:
-            file_name = f"{timestamp}.png"
+        if file_path is None:
+            timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+            file_path = os.path.join(Config.SCREENSHOT_DIR, f"{timestamp}.png")
         
-        file_path = os.path.join(Config.SCREENSHOT_DIR, file_name)
         os.makedirs(os.path.dirname(file_path), exist_ok=True)
         
         try:

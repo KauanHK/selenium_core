@@ -1,10 +1,10 @@
 from .driver import Driver
-from .handling import on_error
+from .handling import Controller
 from .config import Config
 
 
 __all__ = [
     'Driver',
-    'on_error',
+    'Controller',
     'Config'
 ]

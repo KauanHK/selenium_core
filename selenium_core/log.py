@@ -47,10 +47,11 @@ class LogManager:
                 try:
                     result = func(*args, **kwargs)
                 except Exception as e:
-                    self._log(logging.ERROR, f"<<{description} falhou: {e}")
-                    raise
-                finally:
                     self._current_indent_level -= 1
+                    self._log(logging.ERROR, f"<< {description} falhou: {e}")
+                    raise
+                
+                self._current_indent_level -= 1
 
                 duration = time.perf_counter() - start_time
                 self._log(level, f"<< {description} finalizado com sucesso em {duration:.3f} segundos")
