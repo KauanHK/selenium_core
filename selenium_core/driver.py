@@ -11,29 +11,13 @@ from datetime import datetime
 import os
 from typing import Self, Any
 from .wait import Wait
-from .handling import Controller
+from .controller import Controller
 from .config import Config
 from .log import LogManager
 from .utils import is_web_element, describe_element
 
 
-def save_screenshot(driver: 'Driver', exception: Exception | None = None) -> None:
-    """
-    Salva um screenshot do driver com um nome de arquivo dinâmico e informativo.
-    
-    Args:
-        context_name: Um nome para o contexto (ex: o nome da função que falhou).
-    """
-    timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-    file_name = f"{timestamp}_{exception.__class__.__name__}.png"
-
-    file_path = os.path.join(Config.SCREENSHOT_DIR, file_name)
-    os.makedirs(os.path.dirname(file_path), exist_ok=True)
-    
-    driver.save_screenshot(file_path)
-
-
-controller = Controller(exception_handler=save_screenshot)
+controller = Controller()
 
 class Driver:
 
@@ -71,7 +55,6 @@ class Driver:
         self._service = service
         self._keep_alive = keep_alive
         self._driver_cls = driver_cls
-        self._save_screenshot_on_error = save_screenshot_on_error
         self._default_timeout = default_timeout
         self._default_poll_frequency = default_poll_frequency
         self._default_ignored_exceptions = default_ignored_exceptions
@@ -85,6 +68,9 @@ class Driver:
         self._driver = None
         self._wait = None
         self._is_executing = False
+
+        if save_screenshot_on_error:
+            controller.exception_handler = self.save_screenshot
     
     @property
     def driver(self) -> WebDriver:
@@ -495,24 +481,23 @@ class Driver:
         select = Select(element)
         select.select_by_visible_text(text)
     
-    def save_screenshot(self, file_path: str | None = None) -> None:
+    def save_screenshot(self: 'Driver', exception: Exception | None = None) -> None:
         """
         Salva um screenshot do driver com um nome de arquivo dinâmico e informativo.
         
         Args:
-            context_name: Um nome para o contexto (ex: o nome da função que falhou).
+            exception: A exceção que ocorreu, se houver. Usado para nomear o arquivo.
         """
-        if file_path is None:
-            timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-            file_path = os.path.join(Config.SCREENSHOT_DIR, f"{timestamp}.png")
         
+        timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        if exception is None:
+            file_name = f"{timestamp}.png"
+        else:
+            file_name = f"{timestamp}_{exception.__class__.__name__}.png"
+
+        file_path = os.path.join(Config.SCREENSHOT_DIR, file_name)
         os.makedirs(os.path.dirname(file_path), exist_ok=True)
-        
-        try:
-            self.driver.save_screenshot(file_path)
-            self.log.info(f"Screenshot salvo em: {file_path}")
-        except Exception as e:
-            self.log.error(f"Falha ao salvar screenshot. Erro:\n{e}")
+        self.driver.save_screenshot(file_path)
 
     def start_execution(self) -> None:
         """Inicia o contexto de execução do driver. É usado internamente para gerenciar

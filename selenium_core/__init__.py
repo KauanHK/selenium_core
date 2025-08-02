@@ -1,5 +1,5 @@
 from .driver import Driver
-from .handling import Controller
+from .controller import Controller
 from .config import Config
 
 
