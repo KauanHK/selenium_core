@@ -1,7 +1,11 @@
 from selenium.webdriver.remote.webdriver import WebDriver
 from selenium.webdriver.remote.webelement import WebElement
+from selenium.webdriver.common.alert import Alert
 from selenium.types import WaitExcTypes
-from typing import Literal, Self
+from typing import Self, Callable, TypeVar
+
+
+T = TypeVar('T')
 
 
 class Wait:
@@ -9,13 +13,21 @@ class Wait:
     def __init__(
         self,
         driver: WebDriver,
-        default_timeout: float,
-        default_poll_frequency: float | None = None,
+        default_timeout: float = 30,
+        default_poll_frequency: float = 0.5,
         default_ignored_exceptions: WaitExcTypes | None = None
     ) -> None: ...
 
     @property
     def Not(self) -> Self: ...
+
+    def until(
+        self,
+        condition: Callable[..., T],
+        timeout: float | None = None,
+        poll_frequency: float | None = None,
+        ignored_exceptions: WaitExcTypes | None = None
+    ) -> T: ...
 
     def presence_of_element_located(
         self,
@@ -247,7 +259,7 @@ class Wait:
         timeout: float | None = None,
         poll_frequency: float | None = None,
         ignored_exceptions: WaitExcTypes | None = None
-    ) -> Literal[True]: ...
+    ) -> Alert: ...
 
     def frame_to_be_available_and_switch_to_it(
         self,
@@ -280,6 +292,40 @@ class Wait:
         self,
         element: WebElement,
         *,
+        timeout: float | None = None,
+        poll_frequency: float | None = None,
+        ignored_exceptions: WaitExcTypes | None = None
+    ) -> bool: ...
+
+    def element_attribute_to_include(
+        self,
+        locator: tuple[str, str],
+        attribute_: str,
+        *,
+        timeout: float | None = None,
+        poll_frequency: float | None = None,
+        ignored_exceptions: WaitExcTypes | None = None
+    ) -> bool: ...
+
+    def all_of(
+        self,
+        *expected_conditions: Callable,
+        timeout: float | None = None,
+        poll_frequency: float | None = None,
+        ignored_exceptions: WaitExcTypes | None = None
+    ) -> list: ...
+
+    def any_of(
+        self,
+        *expected_conditions: Callable,
+        timeout: float | None = None,
+        poll_frequency: float | None = None,
+        ignored_exceptions: WaitExcTypes | None = None
+    ) -> any: ...
+
+    def none_of(
+        self,
+        *expected_conditions: Callable,
         timeout: float | None = None,
         poll_frequency: float | None = None,
         ignored_exceptions: WaitExcTypes | None = None
