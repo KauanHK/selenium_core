@@ -9,7 +9,7 @@ from selenium.types import WaitExcTypes
 import logging
 from datetime import datetime
 import os
-from typing import Self, Any
+from typing import Callable, Self, Any
 from .wait import Wait
 from .controller import Controller
 from .config import Config
@@ -497,6 +497,23 @@ class Driver:
         file_path = os.path.join(Config.SCREENSHOT_DIR, file_name)
         os.makedirs(os.path.dirname(file_path), exist_ok=True)
         self.driver.save_screenshot(file_path)
+
+    def step(
+        self,
+        description: str,
+        exception_handler: Callable | None = None,
+        retries: int = 0,
+        retry_delay: float = 0.0
+    ) -> Callable:
+        
+        def decorator(func: Callable) -> Callable:
+            return controller.on_error(
+                self.log.step(description),
+                exception_handler=exception_handler,
+                retries=retries,
+                retry_delay=retry_delay
+            )
+        return decorator
 
     def _get_element(
         self,
