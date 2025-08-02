@@ -67,7 +67,6 @@ class Driver:
 
         self._driver = None
         self._wait = None
-        self._is_executing = False
 
         if save_screenshot_on_error:
             controller.exception_handler = self.save_screenshot
@@ -498,20 +497,6 @@ class Driver:
         file_path = os.path.join(Config.SCREENSHOT_DIR, file_name)
         os.makedirs(os.path.dirname(file_path), exist_ok=True)
         self.driver.save_screenshot(file_path)
-
-    def start_execution(self) -> None:
-        """Inicia o contexto de execução do driver. É usado internamente para gerenciar
-          o estado de execução e evitar gerar screenshots repetidas."""
-        self._is_executing = True
-    
-    def stop_execution(self) -> None:
-        """Para o contexto de execução do driver. É usado internamente para gerenciar
-          o estado de execução e evitar gerar screenshots repetidas."""
-        self._is_executing = False
-    
-    def is_executing(self) -> bool:
-        """Verifica se o driver está executando algo."""
-        return self._is_executing
 
     def _get_element(
         self,

@@ -1,10 +1,7 @@
 from contextlib import contextmanager
 from time import sleep
-from typing import Callable, TypeVar, ParamSpec, Hashable, Generator, TYPE_CHECKING
+from typing import Callable, TypeVar, ParamSpec, Hashable, Generator
 
-
-if TYPE_CHECKING:
-    from .driver import Driver
 
 _execution_controller: dict[Hashable, bool] = {}
 
