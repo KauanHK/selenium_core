@@ -1,12 +1,10 @@
 from contextlib import contextmanager
 from time import sleep
-from typing import Callable, TypeVar, ParamSpec, Hashable, Generator
+from typing import Callable, Hashable, Generator
+from .types import P, T
 
 
 _execution_controller: dict[Hashable, bool] = {}
-
-P = ParamSpec('P')
-T = TypeVar('T')
 
 class _ControllerWrapper:
 

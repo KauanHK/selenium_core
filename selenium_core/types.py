@@ -1,4 +1,5 @@
-from typing import TypeVar
+from typing import ParamSpec, TypeVar
 
 
-T_EC = TypeVar('T_EC')
+P = ParamSpec('P')
+T = TypeVar('T')

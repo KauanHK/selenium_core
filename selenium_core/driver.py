@@ -15,7 +15,7 @@ from .controller import Controller
 from .config import Config
 from .log import LogManager
 from .utils import is_web_element, describe_element
-
+from .types import P, T
 
 controller = Controller()
 
@@ -501,12 +501,23 @@ class Driver:
     def step(
         self,
         description: str,
+        log_level: int = logging.INFO,
         exception_handler: Callable | None = None,
         retries: int = 0,
         retry_delay: float = 0.0
-    ) -> Callable:
-        
-        def decorator(func: Callable) -> Callable:
+    ) -> Callable[[Callable[P, T]], Callable[P, T]]:
+        """
+        Decorador para registrar passos no log e tratar exceções.
+
+        Args:
+            description: Descrição do passo a ser registrado.
+            log_level: Nível de log para o passo.
+            exception_handler: Função para tratar exceções, se necessário.
+            retries: Número de vezes que a operação deve ser repetida em caso de falha.
+            retry_delay: Tempo de espera entre as tentativas.
+        """
+
+        def decorator(func: Callable[P, T]) -> Callable[P, T]:
             return controller.on_error(
                 self.log.step(description),
                 exception_handler=exception_handler,
