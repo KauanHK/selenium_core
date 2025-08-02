@@ -79,7 +79,7 @@ class Driver:
     
     @property
     def wait(self) -> Wait:
-        if self._wait is None:
+        if self._wait is None or self._driver is None:
             self._wait = Wait(
                 driver=self.driver,
                 default_timeout=self._default_timeout,
@@ -107,6 +107,7 @@ class Driver:
         self.log.info("Fechando driver")
         self._driver.quit()
         self._driver = None
+        self._wait = None  # Limpa a instância do wait também
 
     @controller.on_error
     def get(self, url: str) -> None:
@@ -314,6 +315,7 @@ class Driver:
         self.log.info(f"Obtendo texto do elemento: {describe_element(element)}")
         return element.text
     
+    @controller.on_error
     def is_displayed(
         self,
         locator: WebElement | tuple[str, str],
@@ -341,6 +343,7 @@ class Driver:
         self.log.info(f"Verificando visibilidade do elemento: {locator}")
         return element.is_displayed()
 
+    @controller.on_error
     def is_enabled(
         self,
         locator: WebElement | tuple[str,str],
@@ -452,7 +455,7 @@ class Driver:
     @controller.on_error
     def select_by_visible_text(
         self,
-        locator: tuple[str, str],
+        locator: WebElement | tuple[str, str],
         text: str,
         timeout: float | None = None,
         poll_frequency: float | None = None,
@@ -480,6 +483,166 @@ class Driver:
         select = Select(element)
         select.select_by_visible_text(text)
     
+    @controller.on_error
+    def get_attribute(
+        self,
+        locator: WebElement | tuple[str, str],
+        attribute: str,
+        timeout: float | None = None,
+        poll_frequency: float | None = None,
+        ignored_exceptions: WaitExcTypes | None = None
+    ) -> str | None:
+        """
+        Obtém o valor de um atributo de um elemento.
+
+        Args:
+            locator: O WebElement ou tupla (by, value) do seletor.
+            attribute: O nome do atributo.
+            timeout: Tempo máximo para aguardar o elemento estar presente.
+            poll_frequency: Frequência de polling para verificar a presença do elemento.
+            ignored_exceptions: Exceções a serem ignoradas durante a espera.
+        """
+
+        element = self._get_element(
+            locator=locator,
+            timeout=timeout,
+            poll_frequency=poll_frequency,
+            ignored_exceptions=ignored_exceptions
+        )
+
+        self.log.info(f"Obtendo atributo '{attribute}' do elemento: {describe_element(element)}")
+        return element.get_attribute(attribute)
+
+    @controller.on_error
+    def wait_for_element_visible(
+        self,
+        locator: tuple[str, str],
+        timeout: float | None = None,
+        poll_frequency: float | None = None,
+        ignored_exceptions: WaitExcTypes | None = None
+    ) -> WebElement:
+        """
+        Aguarda até que um elemento esteja visível na página.
+
+        Args:
+            locator: Tupla (by, value) do seletor.
+            timeout: Tempo máximo para aguardar o elemento estar visível.
+            poll_frequency: Frequência de polling para verificar a visibilidade do elemento.
+            ignored_exceptions: Exceções a serem ignoradas durante a espera.
+        """
+        self.log.info(f"Aguardando elemento ficar visível: {locator}")
+        return self.wait.visibility_of_element_located(
+            locator=locator,
+            timeout=timeout,
+            poll_frequency=poll_frequency,
+            ignored_exceptions=ignored_exceptions
+        )
+
+    @controller.on_error
+    def wait_for_element_invisible(
+        self,
+        locator: tuple[str, str],
+        timeout: float | None = None,
+        poll_frequency: float | None = None,
+        ignored_exceptions: WaitExcTypes | None = None
+    ) -> bool:
+        """
+        Aguarda até que um elemento fique invisível na página.
+
+        Args:
+            locator: Tupla (by, value) do seletor.
+            timeout: Tempo máximo para aguardar o elemento ficar invisível.  
+            poll_frequency: Frequência de polling para verificar a invisibilidade do elemento.
+            ignored_exceptions: Exceções a serem ignoradas durante a espera.
+        """
+        self.log.info(f"Aguardando elemento ficar invisível: {locator}")
+        return self.wait.invisibility_of_element_located(
+            locator=locator,
+            timeout=timeout,
+            poll_frequency=poll_frequency,
+            ignored_exceptions=ignored_exceptions
+        )
+
+    @controller.on_error
+    def double_click(
+        self,
+        locator: WebElement | tuple[str, str],
+        timeout: float | None = None,
+        poll_frequency: float | None = None,
+        ignored_exceptions: WaitExcTypes | None = None
+    ) -> None:
+        """
+        Realiza um duplo clique no elemento especificado.
+
+        Args:
+            locator: O WebElement ou tupla (by, value) do seletor.
+            timeout: Tempo máximo para aguardar o elemento ser clicável.
+            poll_frequency: Frequência de polling para verificar se o elemento está clicável.
+            ignored_exceptions: Exceções a serem ignoradas durante a espera.
+        """
+
+        self.log.info(f"Aguardando o elemento ser clicável para duplo clique: {describe_element(locator)}")
+        element = self.wait.element_to_be_clickable(
+            locator=locator,
+            timeout=timeout,
+            poll_frequency=poll_frequency,
+            ignored_exceptions=ignored_exceptions
+        )
+
+        self.log.info(f"Realizando duplo clique no elemento: {describe_element(element)}")
+        actions = ActionChains(self.driver)
+        actions.double_click(element)
+        actions.perform()
+
+    @controller.on_error
+    def right_click(
+        self,
+        locator: WebElement | tuple[str, str],
+        timeout: float | None = None,
+        poll_frequency: float | None = None,
+        ignored_exceptions: WaitExcTypes | None = None
+    ) -> None:
+        """
+        Realiza um clique direito no elemento especificado.
+
+        Args:
+            locator: O WebElement ou tupla (by, value) do seletor.
+            timeout: Tempo máximo para aguardar o elemento ser clicável.
+            poll_frequency: Frequência de polling para verificar se o elemento está clicável.
+            ignored_exceptions: Exceções a serem ignoradas durante a espera.
+        """
+
+        self.log.info(f"Aguardando o elemento ser clicável para clique direito: {describe_element(locator)}")
+        element = self.wait.element_to_be_clickable(
+            locator=locator,
+            timeout=timeout,
+            poll_frequency=poll_frequency,
+            ignored_exceptions=ignored_exceptions
+        )
+
+        self.log.info(f"Realizando clique direito no elemento: {describe_element(element)}")
+        actions = ActionChains(self.driver)
+        actions.context_click(element)
+        actions.perform()
+
+    @controller.on_error
+    def refresh(self) -> None:
+        """Atualiza a página atual."""
+        self.log.info("Atualizando a página")
+        self.driver.refresh()
+
+    @controller.on_error
+    def back(self) -> None:
+        """Navega para a página anterior no histórico."""
+        self.log.info("Navegando para a página anterior")
+        self.driver.back()
+
+    @controller.on_error
+    def forward(self) -> None:
+        """Navega para a próxima página no histórico."""
+        self.log.info("Navegando para a próxima página")
+        self.driver.forward()
+    
     def save_screenshot(self: 'Driver', exception: Exception | None = None) -> None:
         """
         Salva um screenshot do driver com um nome de arquivo dinâmico e informativo.
@@ -487,6 +650,10 @@ class Driver:
         Args:
             exception: A exceção que ocorreu, se houver. Usado para nomear o arquivo.
         """
+        
+        if not self.is_initialized():
+            self.log.warning("Tentativa de salvar screenshot com driver não inicializado")
+            return
         
         timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
         if exception is None:
@@ -496,7 +663,12 @@ class Driver:
 
         file_path = os.path.join(Config.SCREENSHOT_DIR, file_name)
         os.makedirs(os.path.dirname(file_path), exist_ok=True)
-        self.driver.save_screenshot(file_path)
+        
+        try:
+            self.driver.save_screenshot(file_path)
+            self.log.info(f"Screenshot salvo em: {file_path}")
+        except Exception as e:
+            self.log.error(f"Erro ao salvar screenshot: {e}")
 
     def step(
         self,
