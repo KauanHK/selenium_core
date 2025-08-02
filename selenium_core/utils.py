@@ -1,7 +1,5 @@
-from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.remote.webelement import WebElement
-from typing import Any, TypeIs, Callable
-from .types import T_EC
+from typing import Any, TypeIs
 
 
 def is_web_element(element: Any) -> TypeIs[WebElement]:
