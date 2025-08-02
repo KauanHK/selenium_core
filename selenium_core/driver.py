@@ -519,7 +519,7 @@ class Driver:
 
         def decorator(func: Callable[P, T]) -> Callable[P, T]:
             return controller.on_error(
-                self.log.step(description),
+                self.log.step(description, log_level)(func),
                 exception_handler=exception_handler,
                 retries=retries,
                 retry_delay=retry_delay
