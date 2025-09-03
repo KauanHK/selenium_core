@@ -13,8 +13,8 @@ class _ControllerWrapper:
         controller: 'Controller',
         func: Callable[P, T],
         exception_handler: Callable[[object, Exception], None] | None = None,
-        retries: int = 0,
-        retry_delay: float = 0.0,
+        retries: int | None = None,
+        retry_delay: float = None,
     ) -> None:
         
         self._controller = controller
@@ -30,7 +30,8 @@ class _ControllerWrapper:
             raise exception
         
         args = (self._instance, exception) if self._instance is not None else (exception,)
-        return self._exception_handler(*args)
+        self._exception_handler(*args)
+        raise exception
         
 
     @contextmanager
@@ -47,13 +48,16 @@ class _ControllerWrapper:
     
     def _execute(self, *args: P.args, **kwargs: P.kwargs) -> T:
 
-        for i in range(self._controller.retries+1):
+        retries = self._retries if self._retries is not None else self._controller.retries
+        retry_delay = self._retry_delay if self._retry_delay is not None else self._controller.retry_delay
+        
+        for i in range(retries+1):
             try:
                 return self._func(*args, **kwargs)
             except Exception as e:
-                if i == self._controller.retries:
+                if i >= retries:
                     raise e
-                sleep(self._controller.retry_delay)
+                sleep(retry_delay)
 
     def __get__(self, instance: Hashable, owner: type) -> Callable:
         self._instance = instance
@@ -87,8 +91,8 @@ class Controller:
         self,
         func: Callable[P, T] | None = None,
         exception_handler: Callable[[object, Exception], None] | None = None,
-        retries: int = 0,
-        retry_delay: float = 0.0
+        retries: int | None = None,
+        retry_delay: float | None = None
     ) -> Callable[P, T]:
 
         def decorator(func: Callable[P, T]):

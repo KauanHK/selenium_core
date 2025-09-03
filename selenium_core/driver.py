@@ -9,15 +9,18 @@ from selenium.types import WaitExcTypes
 import logging
 from datetime import datetime
 import os
+import time
 from typing import Callable, Self, Any
 from .wait import Wait
 from .controller import Controller
 from .config import Config
-from .log import LogManager
+from .log import LogManager, LogConfig
 from .utils import is_web_element, describe_element
 from .types import P, T
 
+
 controller = Controller()
+
 
 class Driver:
 
@@ -31,10 +34,7 @@ class Driver:
         default_timeout: float = 30,
         default_poll_frequency: float = 0.5,
         default_ignored_exceptions: WaitExcTypes | None = None,
-        logger: logging.Logger | None = None,
-        log_level: int | None = None,
-        log_file_path: str | None = None,
-        log_indent: int | None = None
+        log_config: LogConfig | None = ...,
     ) -> None:
         """
         Gerenciador de driver do Selenium.
@@ -48,7 +48,7 @@ class Driver:
             default_timeout: Tempo padrão de espera para condições.
             default_poll_frequency: Frequência padrão de polling para condições.
             default_ignored_exceptions: Exceções a serem ignoradas durante as esperas.
-            logger: Logger para registrar eventos. Se não for passado um, criará um logger padrão.
+            log_config: Configuração do logger. Se não for informado, cria logger padrão. Se for None, desativa o logger.
         """
         
         self._options = options
@@ -58,12 +58,7 @@ class Driver:
         self._default_timeout = default_timeout
         self._default_poll_frequency = default_poll_frequency
         self._default_ignored_exceptions = default_ignored_exceptions
-        self.log = LogManager(
-            logger=logger,
-            log_level=log_level,
-            file_path=log_file_path,
-            indent=log_indent
-        )
+        self.log = LogManager.from_config(log_config=log_config)
 
         self._driver = None
         self._wait = None
@@ -107,12 +102,12 @@ class Driver:
         self.log.info("Fechando driver")
         self._driver.quit()
         self._driver = None
-        self._wait = None  # Limpa a instância do wait também
+        self._wait = None
 
     @controller.on_error
     def get(self, url: str) -> None:
         """Navega para a URL especificada."""
-        self.log.info(f"Acessando URL: {url}")
+        self.log.debug(f"Acessando URL: {url}")
         self.driver.get(url)
 
     @controller.on_error
@@ -134,7 +129,7 @@ class Driver:
             poll_frequency: Frequência de polling para verificar a presença do elemento.
             ignored_exceptions: Exceções a serem ignoradas durante a espera.
         """
-        self.log.info(f'Procurando elemento ({by}="{value}")')
+        self.log.debug(f'Procurando elemento ({by}="{value}")')
         return self.wait.presence_of_element_located(
             locator=(by, value),
             timeout=timeout,
@@ -161,7 +156,7 @@ class Driver:
             poll_frequency: Frequência de polling para verificar a presença dos elementos.
             ignored_exceptions: Exceções a serem ignoradas durante a espera.
         """
-        self.log.info(f"Procurando elementos por {by}='{value}'")
+        self.log.debug(f"Procurando elementos por {by}='{value}'")
         return self.wait.presence_of_all_elements_located(
             locator=(by, value),
             timeout=timeout,
@@ -187,7 +182,7 @@ class Driver:
             ignored_exceptions: Exceções a serem ignoradas durante a espera.
         """
         
-        self.log.info(f"Aguardando o elemento ser clicável: {describe_element(locator)}")
+        self.log.debug(f"Aguardando o elemento ser clicável: {describe_element(locator)}")
         element = self.wait.element_to_be_clickable(
             locator=locator,
             timeout=timeout,
@@ -195,7 +190,7 @@ class Driver:
             ignored_exceptions=ignored_exceptions
         )
 
-        self.log.info(f'Clicando no elemento {describe_element(element)}')
+        self.log.debug(f'Clicando no elemento {describe_element(element)}')
         element.click()
 
     @controller.on_error
@@ -216,7 +211,7 @@ class Driver:
             ignored_exceptions: Exceções a serem ignoradas durante a espera.
         """
 
-        self.log.info(f"Aguardando o elemento ser clicável para hover: {describe_element(locator)}")
+        self.log.debug(f"Aguardando o elemento ser clicável para hover: {describe_element(locator)}")
         element = self.wait.element_to_be_clickable(
             locator=locator,
             timeout=timeout,
@@ -224,7 +219,7 @@ class Driver:
             ignored_exceptions=ignored_exceptions
         )
 
-        self.log.info(f"Movendo o mouse para o elemento: {describe_element(element)}")
+        self.log.debug(f"Movendo o mouse para o elemento: {describe_element(element)}")
         actions = ActionChains(self.driver)
         actions.move_to_element(element)
         actions.perform()
@@ -251,6 +246,8 @@ class Driver:
             ignored_exceptions: Exceções a serem ignoradas durante a espera.
         """
 
+        timeout_limit = time.time() + (timeout if timeout is not None else self._default_timeout)
+
         element = self.wait.element_to_be_clickable(
             locator=locator,
             timeout=timeout,
@@ -258,13 +255,16 @@ class Driver:
             ignored_exceptions=ignored_exceptions
         )
 
+        element.click()
+
         if clear:
-            self.log.info(f"Limpando o campo: {describe_element(element)}")
+            self.log.debug(f"Limpando o campo: {describe_element(element)}")
             element.clear()
+            time.sleep(0.5)
 
-        self.log.info(f"Enviando texto {keys} para o elemento: {describe_element(element)}")
+        self.log.debug(f"Enviando texto {keys} para o elemento: {describe_element(element)}")
         element.send_keys(keys)
-
+        
     @controller.on_error
     def execute_script(self, script: str, *args) -> Any:
         """
@@ -274,14 +274,14 @@ class Driver:
             script: O código JavaScript a ser executado.
             *args: Argumentos adicionais a serem passados para o script.
         """
-        self.log.info(f"Executando script: {script} com argumentos: {args}")
+        self.log.debug(f"Executando script: {script} com argumentos: {args}")
         return self.driver.execute_script(script, *args)
 
     @controller.on_error
     def switch_to_window(self, window_index: int = -1) -> None:
         """Muda o foco para uma janela/aba diferente."""
         all_windows = self.driver.window_handles
-        self.log.info(f"Alterando para a janela/aba de índice {window_index}. Total de janelas: {len(all_windows)}")
+        self.log.debug(f"Alterando para a janela/aba de índice {window_index}. Total de janelas: {len(all_windows)}")
         try:
             self.driver.switch_to.window(all_windows[window_index])
         except IndexError:
@@ -312,7 +312,7 @@ class Driver:
             poll_frequency=poll_frequency,
             ignored_exceptions=ignored_exceptions
         )
-        self.log.info(f"Obtendo texto do elemento: {describe_element(element)}")
+        self.log.debug(f"Obtendo texto do elemento: {describe_element(element)}")
         return element.text
     
     @controller.on_error
@@ -340,7 +340,7 @@ class Driver:
             ignored_exceptions=ignored_exceptions
         )
         
-        self.log.info(f"Verificando visibilidade do elemento: {locator}")
+        self.log.debug(f"Verificando visibilidade do elemento: {locator}")
         return element.is_displayed()
 
     @controller.on_error
@@ -368,17 +368,17 @@ class Driver:
             ignored_exceptions=ignored_exceptions
         )
 
-        self.log.info(f"Verificando se o elemento está habilitado: {describe_element(element)}")
+        self.log.debug(f"Verificando se o elemento está habilitado: {describe_element(element)}")
         return element.is_enabled()
 
     def get_title(self) -> str:
         """Retorna o título da página atual."""
-        self.log.info("Obtendo título da página atual")
+        self.log.debug("Obtendo título da página atual")
         return self.driver.title
 
     def get_current_url(self) -> str:
         """Retorna a URL da página atual."""
-        self.log.info("Obtendo URL da página atual")
+        self.log.debug("Obtendo URL da página atual")
         return self.driver.current_url
     
     @controller.on_error
@@ -406,19 +406,19 @@ class Driver:
             ignored_exceptions=ignored_exceptions
         )
 
-        self.log.info(f"Scrollando a página até o elemento: {describe_element(element)}")
+        self.log.debug(f"Scrollando a página até o elemento: {describe_element(element)}")
         self.execute_script("arguments[0].scrollIntoView(true);", element)
 
     @controller.on_error
     def scroll_to_bottom(self) -> None:
         """Rola a página até o final."""
-        self.log.info("Scrollando a página até o final")
+        self.log.debug("Scrollando a página até o final")
         self.execute_script("window.scrollTo(0, document.body.scrollHeight);")
 
     @controller.on_error
     def scroll_to_top(self) -> None:
         """Rola a página até o topo."""
-        self.log.info("Scrollando a página até o topo")
+        self.log.debug("Scrollando a página até o topo")
         self.execute_script("window.scrollTo(0, 0);")
     
     @controller.on_error
@@ -448,7 +448,7 @@ class Driver:
             ignored_exceptions=ignored_exceptions
         )
 
-        self.log.info(f"Selecionando opção com value '{value}' no dropdown: {describe_element(element)}")
+        self.log.debug(f"Selecionando opção com value '{value}' no dropdown: {describe_element(element)}")
         select = Select(element)
         select.select_by_value(value)
 
@@ -479,7 +479,7 @@ class Driver:
             ignored_exceptions=ignored_exceptions
         )
 
-        self.log.info(f"Selecionando opção com texto visível '{text}' no dropdown: {describe_element(element)}")
+        self.log.debug(f"Selecionando opção com texto visível '{text}' no dropdown: {describe_element(element)}")
         select = Select(element)
         select.select_by_visible_text(text)
     
@@ -510,7 +510,7 @@ class Driver:
             ignored_exceptions=ignored_exceptions
         )
 
-        self.log.info(f"Obtendo atributo '{attribute}' do elemento: {describe_element(element)}")
+        self.log.debug(f"Obtendo atributo '{attribute}' do elemento: {describe_element(element)}")
         return element.get_attribute(attribute)
 
     @controller.on_error
@@ -530,7 +530,7 @@ class Driver:
             poll_frequency: Frequência de polling para verificar a visibilidade do elemento.
             ignored_exceptions: Exceções a serem ignoradas durante a espera.
         """
-        self.log.info(f"Aguardando elemento ficar visível: {locator}")
+        self.log.debug(f"Aguardando elemento ficar visível: {locator}")
         return self.wait.visibility_of_element_located(
             locator=locator,
             timeout=timeout,
@@ -555,7 +555,7 @@ class Driver:
             poll_frequency: Frequência de polling para verificar a invisibilidade do elemento.
             ignored_exceptions: Exceções a serem ignoradas durante a espera.
         """
-        self.log.info(f"Aguardando elemento ficar invisível: {locator}")
+        self.log.debug(f"Aguardando elemento ficar invisível: {locator}")
         return self.wait.invisibility_of_element_located(
             locator=locator,
             timeout=timeout,
@@ -581,7 +581,7 @@ class Driver:
             ignored_exceptions: Exceções a serem ignoradas durante a espera.
         """
 
-        self.log.info(f"Aguardando o elemento ser clicável para duplo clique: {describe_element(locator)}")
+        self.log.debug(f"Aguardando o elemento ser clicável para duplo clique: {describe_element(locator)}")
         element = self.wait.element_to_be_clickable(
             locator=locator,
             timeout=timeout,
@@ -589,7 +589,7 @@ class Driver:
             ignored_exceptions=ignored_exceptions
         )
 
-        self.log.info(f"Realizando duplo clique no elemento: {describe_element(element)}")
+        self.log.debug(f"Realizando duplo clique no elemento: {describe_element(element)}")
         actions = ActionChains(self.driver)
         actions.double_click(element)
         actions.perform()
@@ -612,7 +612,7 @@ class Driver:
             ignored_exceptions: Exceções a serem ignoradas durante a espera.
         """
 
-        self.log.info(f"Aguardando o elemento ser clicável para clique direito: {describe_element(locator)}")
+        self.log.debug(f"Aguardando o elemento ser clicável para clique direito: {describe_element(locator)}")
         element = self.wait.element_to_be_clickable(
             locator=locator,
             timeout=timeout,
@@ -620,7 +620,7 @@ class Driver:
             ignored_exceptions=ignored_exceptions
         )
 
-        self.log.info(f"Realizando clique direito no elemento: {describe_element(element)}")
+        self.log.debug(f"Realizando clique direito no elemento: {describe_element(element)}")
         actions = ActionChains(self.driver)
         actions.context_click(element)
         actions.perform()
@@ -628,19 +628,19 @@ class Driver:
     @controller.on_error
     def refresh(self) -> None:
         """Atualiza a página atual."""
-        self.log.info("Atualizando a página")
+        self.log.debug("Atualizando a página")
         self.driver.refresh()
 
     @controller.on_error
     def back(self) -> None:
         """Navega para a página anterior no histórico."""
-        self.log.info("Navegando para a página anterior")
+        self.log.debug("Navegando para a página anterior")
         self.driver.back()
 
     @controller.on_error
     def forward(self) -> None:
         """Navega para a próxima página no histórico."""
-        self.log.info("Navegando para a próxima página")
+        self.log.debug("Navegando para a próxima página")
         self.driver.forward()
     
     def save_screenshot(self: 'Driver', exception: Exception | None = None) -> None:
@@ -666,7 +666,7 @@ class Driver:
         
         try:
             self.driver.save_screenshot(file_path)
-            self.log.info(f"Screenshot salvo em: {file_path}")
+            self.log.debug(f"Screenshot salvo em: {file_path}")
         except Exception as e:
             self.log.error(f"Erro ao salvar screenshot: {e}")
 
@@ -674,9 +674,9 @@ class Driver:
         self,
         description: str,
         log_level: int = logging.INFO,
-        exception_handler: Callable | None = None,
-        retries: int = 0,
-        retry_delay: float = 0.0
+        exception_handler: Callable[[object, Exception], None] | None = None,
+        retries: int | None = None,
+        retry_delay: float | None = None
     ) -> Callable[[Callable[P, T]], Callable[P, T]]:
         """
         Decorador para registrar passos no log e tratar exceções.
